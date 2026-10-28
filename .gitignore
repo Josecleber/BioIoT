@@ -1,0 +1,14 @@
+**/.tools/
+**/.pio/
+**/__pycache__/
+**/node_modules/
+**/config_local.h
+**/config_local.tmp
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/*.db-journal
+**/resultado-instalacao.txt
+.env
+*.log
+.DS_Store

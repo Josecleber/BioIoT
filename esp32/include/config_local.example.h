@@ -1,0 +1,8 @@
+#pragma once
+
+// CREDENCIAIS DE REDE E SERVIDOR
+#define BIOIOT_WIFI_SSID "SSID_DA_REDE"
+#define BIOIOT_WIFI_PASSWORD "SENHA_DA_REDE"
+#define BIOIOT_DEVICE_ID "ESP32-BANCADA-01"
+#define BIOIOT_RELAY_MODE 0
+#define BIOIOT_SERVER_URL "http://192.168.X.X:3000" // Endereço IP do servidor local

@@ -1,0 +1,8 @@
+{
+    email {$ACME_EMAIL}
+    acme_ca https://acme-v02.api.letsencrypt.org/directory
+}
+
+{$BIOIOT_DOMAIN} {
+    reverse_proxy site:3000
+}

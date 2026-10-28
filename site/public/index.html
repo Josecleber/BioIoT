@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioIoT - Painel Clínico v1.0</title>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="brand">
+                <i data-lucide="activity" style="color: var(--accent-blue); width: 28px; height: 28px;"></i>
+                <div>
+                    <h2>BioIoT</h2>
+                    <small>Painel Clínico v1.0</small>
+                </div>
+            </div>
+
+            <nav>
+                <div class="nav-item active" onclick="switchTab('dashboard', this)">
+                    <i data-lucide="layout-dashboard"></i> Dashboard
+                </div>
+                <div class="nav-item" onclick="switchTab('pacientes', this)">
+                    <i data-lucide="users"></i> Visitantes / Pacientes
+                </div>
+                <div class="nav-item" onclick="switchTab('alarmes', this)">
+                    <i data-lucide="bell"></i> Alarmes
+                </div>
+                <div class="nav-item" onclick="switchTab('custos', this)">
+                    <i data-lucide="cpu"></i> Custo & Desempenho
+                </div>
+                <div class="nav-item" onclick="switchTab('relatorios', this)">
+                    <i data-lucide="file-text"></i> Relatórios
+                </div>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <div class="top-bar" style="display: flex; justify-content: flex-end; margin-bottom: 2rem;">
+                <div class="patient-badge" style="background: var(--card-bg); padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid var(--card-border); display: flex; align-items: center; gap: 0.5rem;">
+                    <i data-lucide="user" style="width: 16px; color: var(--accent-blue);"></i>
+                    <span>Pessoa Monitorada: <strong id="activePatientName">Nenhum</strong> <span id="activePatientInfo" style="color: var(--text-muted);">( - )</span></span>
+                </div>
+            </div>
+
+            <div id="dashboard" class="tab-content active">
+                <header>
+                    <h1>Monitoramento em Tempo Real</h1>
+                </header>
+
+                <div class="grid-cards">
+                    <div class="card">
+                        <div class="card-header">
+                            <span>BATIMENTOS CARDÍACOS</span>
+                            <i data-lucide="heart" style="color: var(--accent-red);"></i>
+                        </div>
+                        <div class="value-display">
+                            <span class="number" id="bpmValue" style="color: var(--accent-red);">0</span>
+                            <span class="unit">BPM</span>
+                        </div>
+                        <div class="status-badge status-normal">
+                            <i data-lucide="check-circle" style="width: 14px;"></i> Ritmo Normal
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <span>OXIGENAÇÃO (SpO₂)</span>
+                            <i data-lucide="droplet" style="color: var(--accent-blue);"></i>
+                        </div>
+                        <div class="value-display">
+                            <span class="number" id="spo2Value" style="color: var(--accent-blue);">0</span>
+                            <span class="unit">%</span>
+                        </div>
+                        <div class="status-badge status-normal">
+                            <i data-lucide="check-circle" style="width: 14px;"></i> Estável
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <span>CONDIÇÃO GERAL</span>
+                            <i data-lucide="shield-check" style="color: var(--accent-green);"></i>
+                        </div>
+                        <div class="value-display">
+                            <span class="number" id="condicaoGeralTexto" style="font-size: 2.2rem; color: var(--accent-yellow);">AGUARDANDO...</span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem;">
+                            Dispositivo ESP32: <strong id="activeDevice" style="color: var(--text-main);">ESP32-BANCADA-01</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-top: 2rem;">
+                    <div class="card-header">
+                        <span>HISTÓRICO DE MEDIÇÕES EM TEMPO REAL</span>
+                    </div>
+                    <div class="chart-container" style="position: relative; height: 320px; width: 100%;">
+                        <canvas id="realtimeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div id="pacientes" class="tab-content">
+                <header>
+                    <h1>Gerenciamento de Visitantes / Pacientes</h1>
+                    <p style="color: var(--text-muted);">Cadastre pessoas e associe-os ao hardware ESP32 da bancada.</p>
+                </header>
+
+                <div class="card" style="margin-top: 1.5rem;">
+                    <h3 style="margin-bottom: 1rem; color: var(--accent-blue);">Cadastrar Novo Visitante</h3>
+                    <form id="patientForm" onsubmit="cadastrarPaciente(event)" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) 120px; gap: 1rem; align-items: end;">
+                        <div>
+                            <label style="display:block; font-size:0.85rem; color:var(--text-muted); margin-bottom:0.3rem;">Nome:</label>
+                            <input type="text" id="pNome" required placeholder="Ex: Maria" style="width:100%; padding: 0.6rem; background:#0f172a; border:1px solid var(--card-border); color:#fff; border-radius:6px;">
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:0.85rem; color:var(--text-muted); margin-bottom:0.3rem;">Idade:</label>
+                            <input type="number" id="pIdade" required placeholder="Ex: 30" style="width:100%; padding: 0.6rem; background:#0f172a; border:1px solid var(--card-border); color:#fff; border-radius:6px;">
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:0.85rem; color:var(--text-muted); margin-bottom:0.3rem;">ID do ESP32:</label>
+                            <input type="text" id="pDispositivo" required value="ESP32-BANCADA-01" style="width:100%; padding: 0.6rem; background:#0f172a; border:1px solid var(--card-border); color:#fff; border-radius:6px;">
+                        </div>
+                        <button type="submit" style="background: var(--accent-blue); color: #fff; border: none; padding: 0.6rem; border-radius: 6px; font-weight: bold; cursor: pointer;">Cadastrar</button>
+                    </form>
+                </div>
+
+                <div class="card" style="margin-top: 2rem;">
+                    <h3 style="margin-bottom: 1rem;">Lista de Pessoas Cadastradas</h3>
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left; color: var(--text-main);">
+                            <thead>
+                                <tr style="border-bottom: 1px solid var(--card-border); color: var(--text-muted); font-size: 0.85rem;">
+                                    <th style="padding: 10px;">Nome</th>
+                                    <th style="padding: 10px;">Idade</th>
+                                    <th style="padding: 10px;">Dispositivo</th>
+                                    <th style="padding: 10px; text-align: right;">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="patientsTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="alarmes" class="tab-content">
+                <header>
+                    <h1>Central de Alarmes e Alertas</h1>
+                    <p style="color: var(--text-muted);">Monitoramento de limites críticos para batimentos e oxigenação.</p>
+                </header>
+                <div class="card" style="margin-top: 1.5rem;">
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <i data-lucide="bell-ring" style="color: var(--accent-yellow); width: 32px; height: 32px;"></i>
+                        <div>
+                            <h3 style="color: var(--text-main);">Nenhum Alarme Crítico Ativo</h3>
+                            <p style="color: var(--text-muted); font-size: 0.9rem;">Os sensores estão a operar dentro dos limiares seguros (BPM: 60-100, SpO₂ > 95%).</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="custos" class="tab-content">
+                <header>
+                    <h1>Custo, Tempo de Execução & Consumo de CPU</h1>
+                </header>
+
+                <div class="grid-cards">
+                    <div class="card">
+                        <div class="card-header">
+                            <span>TEMPO DE ATIVIDADE (UPTIME)</span>
+                            <i data-lucide="clock" style="color: var(--accent-blue);"></i>
+                        </div>
+                        <div class="value-display">
+                            <span class="number" id="uptimeValue" style="color: var(--accent-blue);">00:00:00</span>
+                        </div>
+                        <div style="font-size:0.85rem; color:var(--text-muted);">Sessão ativa do sistema</div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <span>USO ESTIMADO DE CPU (ESP32)</span>
+                            <i data-lucide="cpu" style="color: var(--accent-yellow);"></i>
+                        </div>
+                        <div class="value-display">
+                            <span class="number" id="cpuUsage" style="color: var(--accent-yellow);">14.2</span>
+                            <span class="unit">%</span>
+                        </div>
+                        <div class="status-badge status-normal">
+                            <i data-lucide="zap" style="width: 14px;"></i> Dual-Core 240MHz
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <span>CUSTO ENERGÉTICO ESTIMADO</span>
+                            <i data-lucide="dollar-sign" style="color: var(--accent-green);"></i>
+                        </div>
+                        <div class="value-display">
+                            <span class="number" id="energyCost" style="font-size: 2.2rem; color: var(--accent-green);">R$ 0,0000</span>
+                        </div>
+                        <div style="font-size:0.85rem; color:var(--text-muted);">Baseado em 5V / 160mA</div>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-top: 2rem;">
+                    <div class="card-header">
+                        <span>Telemetria de Recursos em Tempo Real (CPU & Potência)</span>
+                        <i data-lucide="activity" style="color: var(--accent-yellow);"></i>
+                    </div>
+                    <div class="chart-container" style="position: relative; height: 280px; width: 100%;">
+                        <canvas id="performanceChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div id="relatorios" class="tab-content">
+                <header>
+                    <h1>Relatórios Biométricos e Operacionais</h1>
+                    <p style="color: var(--text-muted);">Gere relatórios individuais por paciente ou o relatório geral para a staff da feira.</p>
+                </header>
+
+                <div class="card" style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                    <div style="display: flex; gap: 1rem; align-items: center;">
+                        <div>
+                            <label style="display:block; font-size:0.8rem; color:var(--text-muted); margin-bottom:0.3rem;">Tipo de Relatório:</label>
+                            <select id="tipoRelatorio" onchange="mudarTipoRelatorio()" style="padding: 0.6rem; background:#0f172a; border:1px solid var(--card-border); color:#fff; border-radius:6px;">
+                                <option value="individual">Relatório Individual (Paciente Ativo)</option>
+                                <option value="geral">Relatório Geral (Painel da Staff)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <button onclick="exportarRelatorioCSV()" style="background: var(--accent-green); color: #000; border: none; padding: 0.7rem 1.2rem; border-radius: 8px; font-weight: bold; cursor: pointer; display: flex; align-items: center;">
+                            <i data-lucide="file-spreadsheet" style="width: 18px; margin-right: 5px;"></i> Exportar CSV Ativo
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-top: 2rem;">
+                    <div class="card-header">
+                        <span id="tituloTabelaRelatorio">Histórico Individual - Paciente Ativo</span>
+                        <i data-lucide="database" style="color: var(--accent-blue);"></i>
+                    </div>
+                    <div style="overflow-x: auto; margin-top: 1rem;">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left; color: var(--text-main);">
+                            <thead>
+                                <tr style="border-bottom: 1px solid var(--card-border); color: var(--text-muted); font-size: 0.85rem;">
+                                    <th style="padding: 10px;">ID</th>
+                                    <th style="padding: 10px;">Dispositivo</th>
+                                    <th style="padding: 10px;">BPM</th>
+                                    <th style="padding: 10px;">SpO₂ (%)</th>
+                                    <th style="padding: 10px;">Data / Hora</th>
+                                </tr>
+                            </thead>
+                            <tbody id="relatoriosTableBody">
+                                <tr>
+                                    <td colspan="5" style="padding: 15px; text-align: center; color: var(--text-muted);">A carregar dados...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

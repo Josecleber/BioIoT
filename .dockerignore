@@ -1,0 +1,11 @@
+.git
+esp32
+**/node_modules
+**/.tools
+**/.pio
+**/__pycache__
+**/config_local.h
+**/*.db
+**/*.db-*
+.env
+*.zip

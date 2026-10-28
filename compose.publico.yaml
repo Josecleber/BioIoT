@@ -1,0 +1,21 @@
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      site:
+        condition: service_healthy
+    environment:
+      BIOIOT_DOMAIN: ${BIOIOT_DOMAIN:?Preencha BIOIOT_DOMAIN no arquivo .env}
+      ACME_EMAIL: ${ACME_EMAIL:?Preencha ACME_EMAIL no arquivo .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - certificados:/data
+      - caddy_config:/config
+volumes:
+  certificados:
+  caddy_config:

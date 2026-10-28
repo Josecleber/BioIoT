@@ -1,0 +1,17 @@
+# Credenciais locais
+/include/config_local.h
+
+# Ferramentas e arquivos gerados locais
+/.tools/
+/.pio/
+*.bin
+*.elf
+*.map
+platformio-device-monitor-*.log
+/recursos/
+/.vscode/
+
+# Arquivos pessoais do editor
+/.vscode/.browse.c_cpp.db*
+/.vscode/ipch/
+*.code-workspace
