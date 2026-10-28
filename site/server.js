@@ -74,7 +74,7 @@ app.delete('/api/pacientes/:id', (req, res) => {
 app.post('/api/dados', (req, res) => {
     const { dispositivo, bpm, spo2 } = req.body;
 
-    if (!dispositivo || !bpm || !spo2) {
+    if (!dispositivo || bpm === undefined || spo2 === undefined) {
         return res.status(400).json({ erro: 'Dados incompletos enviados pelo ESP32' });
     }
 

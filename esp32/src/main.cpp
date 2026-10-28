@@ -24,15 +24,15 @@ bool validReading(const ppg::Reading& reading) {
 }
 
 // Constrói o pacote de dados no formato JSON
-String makePayload(const ppg::Reading& reading) {
-  StaticJsonDocument<256> body;
-  body["dispositivo"] = config::DEVICE_ID;
-  body["bpm"] = static_cast<int>(lroundf(reading.bpm));
-  body["spo2"] = static_cast<int>(lroundf(reading.spo2));
-  String result;
-  serializeJson(body, result);
-  return result;
-}
+// String makePayload(const ppg::Reading& reading) {
+//   StaticJsonDocument<256> body;
+//   body["dispositivo"] = config::DEVICE_ID;
+//   body["bpm"] = static_cast<int>(lroundf(reading.bpm));
+//   body["spo2"] = static_cast<int>(lroundf(reading.spo2));
+//   String result;
+//   serializeJson(body, result);
+//   return result;
+// }
 
 // LOOP DA REDE
 void networkTask(void*) {
@@ -49,6 +49,10 @@ void networkTask(void*) {
 
   uint32_t nextSend = millis();
   uint32_t backoff = config::SEND_INTERVAL_MS;
+  
+  // Variáveis para a lógica de zerar o painel
+  uint32_t ultimoTempoValido = millis();
+  bool jaEnviouZeros = false;
 
   for (;;) {
     const uint32_t now = millis();
@@ -59,32 +63,70 @@ void networkTask(void*) {
       continue;
     }
 
-    if (static_cast<int32_t>(now - nextSend) < 0 || !validReading(reading)) {
-      vTaskDelay(pdMS_TO_TICKS(50));
-      continue;
+    String payloadToSend = "";
+    bool isZeroPayload = false;
+
+    // Avaliação 1: Temos um sinal válido?
+    if (validReading(reading)) {
+      ultimoTempoValido = now;
+      jaEnviouZeros = false;  
+      
+      // Só cria o pacote se já passou o tempo de intervalo (SEND_INTERVAL_MS)
+      if (static_cast<int32_t>(now - nextSend) >= 0) {
+        payloadToSend = makePayload(reading);
+      }
+    } 
+    // Avaliação 2: Sinal inválido
+    else {
+      // Se passou 3 segundos sem sinal
+      if (now - ultimoTempoValido > 3000 && !jaEnviouZeros) {
+        
+        ppg::Reading leituraZero = {};
+        leituraZero.bpm = 0;
+        leituraZero.spo2 = 0;
+        
+        payloadToSend = makePayload(leituraZero);
+        isZeroPayload = true;
+      }
     }
 
-    WiFiClient plainClient;
-    HTTPClient request;
-    request.setConnectTimeout(config::HTTP_TIMEOUT_MS);
-    request.setTimeout(config::HTTP_TIMEOUT_MS);
-    
-    if (request.begin(plainClient, server)) {
-      request.addHeader("Content-Type", "application/json");
-      int status = request.POST(makePayload(reading));
+    // Executa a rede apenas se houver algo para enviar
+    if (payloadToSend.length() > 0) {
+      WiFiClient plainClient;
+      HTTPClient request;
+      request.setConnectTimeout(config::HTTP_TIMEOUT_MS);
+      request.setTimeout(config::HTTP_TIMEOUT_MS);
       
-      if (status == 201) {
-        Serial.printf("[ENVIO OK] %s | BPM %d | SpO2 %d%% | HTTP 201\n", config::DEVICE_ID,
-                      static_cast<int>(lroundf(reading.bpm)), static_cast<int>(lroundf(reading.spo2)));
-        backoff = config::SEND_INTERVAL_MS;
+      if (request.begin(plainClient, server)) {
+        request.addHeader("Content-Type", "application/json");
+        int status = request.POST(payloadToSend);
+        
+        if (status == 201) {
+          if (isZeroPayload) {
+            Serial.println("[ENVIO OK] Dedo removido | Painel zerado | HTTP 201");
+            jaEnviouZeros = true; 
+          } else {
+            Serial.printf("[ENVIO OK] %s | BPM %d | SpO2 %d%% | HTTP 201\n", config::DEVICE_ID,
+                          static_cast<int>(lroundf(reading.bpm)), static_cast<int>(lroundf(reading.spo2)));
+            backoff = config::SEND_INTERVAL_MS;
+            nextSend = millis() + backoff;
+          }
+        } else {
+          Serial.printf("[ENVIO FALHOU] HTTP %d\n", status);
+          if (isZeroPayload) {
+            jaEnviouZeros = true;
+          } else {
+            backoff = min(backoff * 2, static_cast<uint32_t>(30000));
+            nextSend = millis() + backoff;
+          }
+        }
+        request.end();
       } else {
-        Serial.printf("[ENVIO FALHOU] HTTP %d\n", status);
-        backoff = min(backoff * 2, static_cast<uint32_t>(30000));
+         // Falha física na ligação
+         if (isZeroPayload) jaEnviouZeros = true;
       }
-      request.end();
     }
     
-    nextSend = millis() + backoff;
     vTaskDelay(pdMS_TO_TICKS(50));
   }
 }
