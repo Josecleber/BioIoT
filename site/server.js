@@ -35,6 +35,7 @@ db.serialize(() => {
 });
 
 let ultimaConexaoESP = null;
+let estadosUI = {};
 
 app.get('/api/status-esp', (req, res) => {
     if (!ultimaConexaoESP) {
@@ -53,13 +54,30 @@ app.get('/api/pacientes', (req, res) => {
     });
 });
 
-app.post('/api/pacientes', (req, res) => {
-    const { nome, idade, dispositivo } = req.body;
-    const query = `INSERT INTO pacientes (nome, idade, dispositivo) VALUES (?, ?, ?)`;
-    
-    db.run(query, [nome, idade, dispositivo], function(err) {
+app.post('/api/dados', (req, res) => {
+    const { dispositivo, bpm, spo2 } = req.body;
+
+    if (!dispositivo || bpm === undefined || spo2 === undefined) {
+        return res.status(400).json({ erro: 'Dados incompletos enviados pelo ESP32' });
+    }
+
+    ultimaConexaoESP = Date.now();
+
+    // Comando de interface
+    if (bpm <= 0) {
+        estadosUI[dispositivo] = { bpm, spo2 }; // Guarda estado temporário apenas na RAM
+        console.log(`[UI] Disp: ${dispositivo} | Estado: ${bpm === 0 ? 'Sem dedo' : 'A calcular'}`);
+        return res.status(201).json({ status: 'Estado da interface atualizado' });
+    }
+
+    // Leitura real
+    estadosUI[dispositivo] = { bpm, spo2 }; 
+    const query = `INSERT INTO leituras (dispositivo, bpm, spo2) VALUES (?, ?, ?)`;
+    db.run(query, [dispositivo, bpm, spo2], function(err) {
         if (err) return res.status(500).json({ erro: err.message });
-        res.json({ id: this.lastID, nome, idade, dispositivo });
+        
+        console.log(`[IoT Saúde] Disp: ${dispositivo} | BPM: ${bpm} | SpO2: ${spo2}%`);
+        res.status(201).json({ status: 'Sucesso', leituraId: this.lastID });
     });
 });
 
@@ -91,8 +109,14 @@ app.post('/api/dados', (req, res) => {
 
 app.get('/api/dados/ultimo/:dispositivo', (req, res) => {
     const { dispositivo } = req.params;
-    const query = `SELECT * FROM leituras WHERE dispositivo = ? ORDER BY id DESC LIMIT 1`;
     
+    // Verifica se a placa está num estado visual
+    if (estadosUI[dispositivo] && estadosUI[dispositivo].bpm <= 0) {
+        return res.json(estadosUI[dispositivo]); // Entrega o 0 ou -1 diretamente ao site
+    }
+    
+    // Caso contrário, busca a leitura real mais recente
+    const query = `SELECT * FROM leituras WHERE dispositivo = ? ORDER BY id DESC LIMIT 1`;
     db.get(query, [dispositivo], (err, row) => {
         if (err) return res.status(500).json({ erro: err.message });
         res.json(row || { bpm: 0, spo2: 0 });

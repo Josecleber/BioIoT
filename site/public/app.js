@@ -142,6 +142,19 @@ async function atualizarDadosDashboard() {
         const bpm = dados.bpm || 0;
         const spo2 = dados.spo2 || 0;
 
+        if (bpm === -1 || spo2 === -1) {
+            document.getElementById('bpmValue').innerHTML = '<span style="font-size: 0.5em; color: var(--accent-blue);">Lendo...</span>';
+            document.getElementById('spo2Value').innerHTML = '<span style="font-size: 0.5em; color: var(--accent-blue);">Lendo...</span>';
+            
+            // Muda o texto do status geral
+            const elementoCondicao = document.getElementById('condicaoGeralTexto');
+            if (elementoCondicao) {
+                elementoCondicao.textContent = "A CALCULAR...";
+                elementoCondicao.style.color = "var(--accent-blue)";
+            }
+            return; // Interrompe aqui para não desenhar o "-1" no gráfico
+        }
+
         document.getElementById('bpmValue').textContent = bpm;
         document.getElementById('spo2Value').textContent = spo2;
 

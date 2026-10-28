@@ -24,15 +24,15 @@ bool validReading(const ppg::Reading& reading) {
 }
 
 // Constrói o pacote de dados no formato JSON
-// String makePayload(const ppg::Reading& reading) {
-//   StaticJsonDocument<256> body;
-//   body["dispositivo"] = config::DEVICE_ID;
-//   body["bpm"] = static_cast<int>(lroundf(reading.bpm));
-//   body["spo2"] = static_cast<int>(lroundf(reading.spo2));
-//   String result;
-//   serializeJson(body, result);
-//   return result;
-// }
+String makePayload(const ppg::Reading& reading) {
+  StaticJsonDocument<256> body;
+  body["dispositivo"] = config::DEVICE_ID;
+  body["bpm"] = static_cast<int>(lroundf(reading.bpm));
+  body["spo2"] = static_cast<int>(lroundf(reading.spo2));
+  String result;
+  serializeJson(body, result);
+  return result;
+}
 
 // LOOP DA REDE
 void networkTask(void*) {
@@ -50,9 +50,10 @@ void networkTask(void*) {
   uint32_t nextSend = millis();
   uint32_t backoff = config::SEND_INTERVAL_MS;
   
-  // Variáveis para a lógica de zerar o painel
+  // Controlo de estados para o Painel Web
   uint32_t ultimoTempoValido = millis();
   bool jaEnviouZeros = false;
+  bool jaEnviouCalculando = false;
 
   for (;;) {
     const uint32_t now = millis();
@@ -65,26 +66,45 @@ void networkTask(void*) {
 
     String payloadToSend = "";
     bool isZeroPayload = false;
+    bool isCalcPayload = false;
 
-    // Avaliação 1: Temos um sinal válido?
-    if (validReading(reading)) {
+    // Verifica se o sensor tem um dedo apoiado
+    bool temDedo = (reading.state == ppg::SignalState::Stabilizing ||
+                    reading.state == ppg::SignalState::Acquiring ||
+                    reading.state == ppg::SignalState::Valid);
+
+    if (temDedo) {
       ultimoTempoValido = now;
-      jaEnviouZeros = false;  
+      jaEnviouZeros = false; 
       
-      // Só cria o pacote se já passou o tempo de intervalo (SEND_INTERVAL_MS)
-      if (static_cast<int32_t>(now - nextSend) >= 0) {
-        payloadToSend = makePayload(reading);
+      if (reading.state == ppg::SignalState::Valid) {
+        jaEnviouCalculando = false; 
+        
+        // Envia as leituras normais de X em X segundos
+        if (static_cast<int32_t>(now - nextSend) >= 0) {
+          payloadToSend = makePayload(reading);
+        }
+      } 
+      else {
+        // O dedo está lá, mas ainda está a calcular
+        if (!jaEnviouCalculando) {
+          ppg::Reading leituraCalc = {};
+          leituraCalc.bpm = -1;
+          leituraCalc.spo2 = -1;
+          payloadToSend = makePayload(leituraCalc);
+          isCalcPayload = true;
+        }
       }
     } 
-    // Avaliação 2: Sinal inválido
     else {
-      // Se passou 3 segundos sem sinal
+      // Dedo foi removido
+      jaEnviouCalculando = false; 
+      
+      // Se passou 3 segundos sem dedo e ainda não avisou o servidor
       if (now - ultimoTempoValido > 3000 && !jaEnviouZeros) {
-        
         ppg::Reading leituraZero = {};
         leituraZero.bpm = 0;
         leituraZero.spo2 = 0;
-        
         payloadToSend = makePayload(leituraZero);
         isZeroPayload = true;
       }
@@ -105,6 +125,9 @@ void networkTask(void*) {
           if (isZeroPayload) {
             Serial.println("[ENVIO OK] Dedo removido | Painel zerado | HTTP 201");
             jaEnviouZeros = true; 
+          } else if (isCalcPayload) {
+            Serial.println("[ENVIO OK] Dedo detetado | Painel a calcular | HTTP 201");
+            jaEnviouCalculando = true;
           } else {
             Serial.printf("[ENVIO OK] %s | BPM %d | SpO2 %d%% | HTTP 201\n", config::DEVICE_ID,
                           static_cast<int>(lroundf(reading.bpm)), static_cast<int>(lroundf(reading.spo2)));
@@ -113,17 +136,17 @@ void networkTask(void*) {
           }
         } else {
           Serial.printf("[ENVIO FALHOU] HTTP %d\n", status);
-          if (isZeroPayload) {
-            jaEnviouZeros = true;
-          } else {
+          if (isZeroPayload) jaEnviouZeros = true;
+          else if (isCalcPayload) jaEnviouCalculando = true;
+          else {
             backoff = min(backoff * 2, static_cast<uint32_t>(30000));
             nextSend = millis() + backoff;
           }
         }
         request.end();
       } else {
-         // Falha física na ligação
          if (isZeroPayload) jaEnviouZeros = true;
+         if (isCalcPayload) jaEnviouCalculando = true;
       }
     }
     
@@ -134,6 +157,8 @@ void networkTask(void*) {
 
 // INICIALIZAÇÃO
 void setup() {
+  pinMode(2, OUTPUT); 
+
   Serial.begin(115200);
   Serial.println("\nBioIoT | ESP32 + MAX30102 | Envio Direto");
   ppg::begin();
