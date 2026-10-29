@@ -77,7 +77,7 @@ void networkTask(void*) {
       ultimoTempoValido = now;
       jaEnviouZeros = false; 
       
-      if (reading.state == ppg::SignalState::Valid) {
+      if (validReading(reading)) {
         jaEnviouCalculando = false; 
         
         // Envia as leituras normais de X em X segundos

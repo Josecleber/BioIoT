@@ -27,7 +27,7 @@ async function verificarStatusConexaoESP() {
 
         if (!dados.online) {
             if (elementoCondicao) {
-                elementoCondicao.textContent = "AGUARDANDO...";
+                elementoCondicao.textContent = "SEM SINAL";
                 elementoCondicao.style.color = "var(--accent-yellow)";
             }
             if (elementoDispositivo) {
@@ -35,10 +35,6 @@ async function verificarStatusConexaoESP() {
                 elementoDispositivo.style.color = "var(--accent-red)";
             }
         } else {
-            if (elementoCondicao) {
-                elementoCondicao.textContent = "NORMAL";
-                elementoCondicao.style.color = "var(--accent-green)";
-            }
             if (elementoDispositivo) {
                 elementoDispositivo.textContent = pacienteAtivo.dispositivo;
                 elementoDispositivo.style.color = "var(--text-main)";
@@ -139,10 +135,64 @@ async function atualizarDadosDashboard() {
         const res = await fetch(`/api/dados/ultimo/${pacienteAtivo.dispositivo}`);
         const dados = await res.json();
 
+        const respostaStatus = await fetch('/api/status-esp');
+        const statusESP = await respostaStatus.json();
+
+        if (!statusESP.online) {
+            document.getElementById('bpmValue').textContent = '--';
+            document.getElementById('spo2Value').textContent = '--';
+
+            document.getElementById('bpmStatus').textContent = 'Sem sinal';
+            document.getElementById('spo2Status').textContent = 'Sem sinal';
+
+            document.getElementById('bpmStatus').classList.remove('status-normal');
+            document.getElementById('spo2Status').classList.remove('status-normal');
+
+        const condicao = document.getElementById('condicaoGeralTexto');
+
+        if (condicao) {
+            condicao.textContent = 'SEM SINAL';
+            condicao.style.color = 'var(--accent-yellow)';
+        }
+
+        return;
+    }
         const bpm = dados.bpm || 0;
         const spo2 = dados.spo2 || 0;
+        
+        
+        const bpmStatus = document.getElementById('bpmStatus');
+        const spo2Status = document.getElementById('spo2Status');
+
+        function atualizarIndicadores(textoBpm, textoSpo2, valido) {
+            if (bpmStatus) {
+                bpmStatus.textContent = textoBpm;
+                bpmStatus.classList.toggle('status-normal', valido);
+            }
+
+            if (spo2Status) {
+                spo2Status.textContent = textoSpo2;
+                spo2Status.classList.toggle('status-normal', valido);
+            }
+        }
+
+        if (bpm === 0 || spo2 === 0) {
+            atualizarIndicadores('Sem medição', 'Sem medição', false);
+            document.getElementById('bpmValue').textContent = '--';
+            document.getElementById('spo2Value').textContent = '--';
+
+            const elementoCondicao = document.getElementById('condicaoGeralTexto');
+
+        if (elementoCondicao) {
+            elementoCondicao.textContent = "SEM MEDIÇÃO";
+            elementoCondicao.style.color = "var(--accent-yellow)";
+        }
+
+        return;
+        }
 
         if (bpm === -1 || spo2 === -1) {
+            atualizarIndicadores('Calculando...', 'Calculando...', false);
             document.getElementById('bpmValue').innerHTML = '<span style="font-size: 0.5em; color: var(--accent-blue);">Lendo...</span>';
             document.getElementById('spo2Value').innerHTML = '<span style="font-size: 0.5em; color: var(--accent-blue);">Lendo...</span>';
             
@@ -157,6 +207,15 @@ async function atualizarDadosDashboard() {
 
         document.getElementById('bpmValue').textContent = bpm;
         document.getElementById('spo2Value').textContent = spo2;
+
+        atualizarIndicadores('Leitura disponível', 'Leitura disponível', true);
+
+        const elementoCondicao = document.getElementById('condicaoGeralTexto');
+
+        if (elementoCondicao) {
+            elementoCondicao.textContent = "LEITURA DISPONÍVEL";
+            elementoCondicao.style.color = "var(--accent-green)";
+        }
 
         const agora = new Date().toLocaleTimeString();
 
