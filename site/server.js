@@ -107,24 +107,6 @@ app.delete('/api/pacientes/:id', (req, res) => {
     });
 });
 
-app.post('/api/dados', (req, res) => {
-    const { dispositivo, bpm, spo2 } = req.body;
-
-    if (!dispositivo || bpm === undefined || spo2 === undefined) {
-        return res.status(400).json({ erro: 'Dados incompletos enviados pelo ESP32' });
-    }
-
-    const query = `INSERT INTO leituras (dispositivo, bpm, spo2) VALUES (?, ?, ?)`;
-    db.run(query, [dispositivo, bpm, spo2], function (err) {
-        if (err) return res.status(500).json({ erro: err.message });
-
-        ultimaConexaoESP = Date.now();
-
-        console.log(`[IoT Recebido] Disp: ${dispositivo} | BPM: ${bpm} | SpO2: ${spo2}%`);
-        res.status(201).json({ status: 'Sucesso', leituraId: this.lastID });
-    });
-});
-
 app.get('/api/dados/ultimo/:dispositivo', (req, res) => {
     const { dispositivo } = req.params;
 
