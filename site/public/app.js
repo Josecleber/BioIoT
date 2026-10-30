@@ -8,6 +8,32 @@ let pacienteAtivo = {
 
 let realtimeChart = null;
 let performanceChart = null;
+let ultimoIdPlotado = null;
+let graficoEmPausa = false;
+
+function marcarInterrupcaoGrafico() {
+    if (!realtimeChart || graficoEmPausa) return;
+
+    if (realtimeChart.data.labels.length === 0) return;
+
+    realtimeChart.data.labels.push(
+        new Date().toLocaleTimeString('pt-BR')
+    );
+
+    realtimeChart.data.datasets.forEach(dataset => {
+        dataset.data.push(null);
+    });
+
+    while (realtimeChart.data.labels.length > 10) {
+        realtimeChart.data.labels.shift();
+        realtimeChart.data.datasets.forEach(dataset => {
+            dataset.data.shift();
+        });
+    }
+
+    graficoEmPausa = true;
+    realtimeChart.update();
+}
 
 function switchTab(tabId, element) {
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
@@ -117,6 +143,17 @@ async function excluirPaciente(id) {
 function selecionarPacienteParaMonitorar(id, nome, idade, dispositivo) {
     pacienteAtivo = { id, nome, idade, dispositivo };
 
+    ultimoIdPlotado = null;
+    graficoEmPausa = false;
+
+    if (realtimeChart) {
+        realtimeChart.data.labels = [];
+        realtimeChart.data.datasets.forEach(dataset => {
+            dataset.data = [];
+        });
+        realtimeChart.update();
+    }
+
     const elemNome = document.getElementById('activePatientName');
     const elemInfo = document.getElementById('activePatientInfo');
     if (elemNome) elemNome.textContent = nome;
@@ -139,6 +176,8 @@ async function atualizarDadosDashboard() {
         const statusESP = await respostaStatus.json();
 
         if (!statusESP.online) {
+            marcarInterrupcaoGrafico();
+
             document.getElementById('bpmValue').textContent = '--';
             document.getElementById('spo2Value').textContent = '--';
 
@@ -177,6 +216,7 @@ async function atualizarDadosDashboard() {
         }
 
         if (bpm === 0 || spo2 === 0) {
+            marcarInterrupcaoGrafico();
             atualizarIndicadores('Sem medição', 'Sem medição', false);
             document.getElementById('bpmValue').textContent = '--';
             document.getElementById('spo2Value').textContent = '--';
@@ -192,6 +232,7 @@ async function atualizarDadosDashboard() {
         }
 
         if (bpm === -1 || spo2 === -1) {
+            marcarInterrupcaoGrafico();
             atualizarIndicadores('Calculando...', 'Calculando...', false);
             document.getElementById('bpmValue').innerHTML = '<span style="font-size: 0.5em; color: var(--accent-blue);">Lendo...</span>';
             document.getElementById('spo2Value').innerHTML = '<span style="font-size: 0.5em; color: var(--accent-blue);">Lendo...</span>';
@@ -217,10 +258,17 @@ async function atualizarDadosDashboard() {
             elementoCondicao.style.color = "var(--accent-green)";
         }
 
-        const agora = new Date().toLocaleTimeString();
+        if (dados.id == null || dados.id === ultimoIdPlotado) {
+            return;
+        }
+
+        ultimoIdPlotado = dados.id;
+        graficoEmPausa = false;
+
+        const agora = new Date().toLocaleTimeString('pt-BR');
 
         if (realtimeChart) {
-            if (realtimeChart.data.labels.length > 10) {
+            if (realtimeChart.data.labels.length >= 10) {
                 realtimeChart.data.labels.shift();
                 realtimeChart.data.datasets[0].data.shift();
                 realtimeChart.data.datasets[1].data.shift();
@@ -266,7 +314,8 @@ function inicializarGraficoSaude() {
                     backgroundColor: 'rgba(239, 68, 68, 0.1)',
                     data: [],
                     tension: 0.3,
-                    fill: true
+                    spanGaps: false,
+                    fill: false
                 },
                 {
                     label: 'SpO₂ (%)',
@@ -274,13 +323,15 @@ function inicializarGraficoSaude() {
                     backgroundColor: 'rgba(59, 130, 246, 0.1)',
                     data: [],
                     tension: 0.3,
-                    fill: true
+                    spanGaps: false,
+                    fill: false
                 }
             ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: false,
             scales: {
                 y: { beginAtZero: true, grid: { color: '#334155' } },
                 x: { grid: { color: '#334155' } }

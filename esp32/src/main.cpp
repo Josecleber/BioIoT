@@ -5,7 +5,6 @@
 #include <WiFiClientSecure.h>
 #include <math.h>
 #include <time.h>
-
 #include "config.h"
 #include "ppg_sensor.h"
 #include "tls_ca.h"
@@ -49,7 +48,10 @@ void networkTask(void*) {
 
   uint32_t nextSend = millis();
   uint32_t backoff = config::SEND_INTERVAL_MS;
-  
+
+  const uint32_t HEARTBEAT_INTERVAL_MS = 5000;
+  uint32_t ultimoHeartbeat = millis() - HEARTBEAT_INTERVAL_MS;
+
   // Controlo de estados para o Painel Web
   uint32_t ultimoTempoValido = millis();
   bool jaEnviouZeros = false;
@@ -63,6 +65,45 @@ void networkTask(void*) {
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
+
+    
+    if (static_cast<uint32_t>(now - ultimoHeartbeat) >= HEARTBEAT_INTERVAL_MS) {
+      WiFiClient client;
+      HTTPClient heartbeat;
+
+      heartbeat.setConnectTimeout(config::HTTP_TIMEOUT_MS);
+      heartbeat.setTimeout(config::HTTP_TIMEOUT_MS);
+
+      String heartbeatUrl = config::SERVER_URL;
+      while (heartbeatUrl.endsWith("/")) {
+        heartbeatUrl.remove(heartbeatUrl.length() - 1);
+      }
+      heartbeatUrl += "/api/heartbeat";
+
+    if (heartbeat.begin(client, heartbeatUrl)) {
+      heartbeat.addHeader("Content-Type", "application/json");
+
+      StaticJsonDocument<128> body;
+      body["dispositivo"] = config::DEVICE_ID;
+
+      String payload;
+      serializeJson(body, payload);
+
+      int status = heartbeat.POST(payload);
+
+    if (status == 200) {
+      Serial.println("[HEARTBEAT OK] ESP32 conectado ao servidor");
+    } else {
+      Serial.printf("[HEARTBEAT FALHOU] HTTP %d\n", status);
+    }
+
+    heartbeat.end();
+  } else {
+    Serial.println("[HEARTBEAT FALHOU] Não foi possível abrir conexão");
+  }
+
+  ultimoHeartbeat = millis();
+}
 
     String payloadToSend = "";
     bool isZeroPayload = false;

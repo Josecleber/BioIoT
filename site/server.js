@@ -37,6 +37,24 @@ db.serialize(() => {
 let ultimaConexaoESP = null;
 let estadosUI = {};
 
+// Recebe periodicamente o sinal de vida do ESP32
+app.post('/api/heartbeat', (req, res) => {
+    const { dispositivo } = req.body;
+
+    if (typeof dispositivo !== 'string' || !dispositivo.trim()) {
+        return res.status(400).json({
+            erro: 'Dispositivo não informado'
+        });
+    }
+
+    ultimaConexaoESP = Date.now();
+
+    res.status(200).json({
+        status: 'online',
+        dispositivo
+    });
+});
+
 app.get('/api/status-esp', (req, res) => {
     if (!ultimaConexaoESP) {
         return res.json({ online: false });
