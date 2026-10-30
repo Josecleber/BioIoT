@@ -38,7 +38,7 @@ function marcarInterrupcaoGrafico() {
 function switchTab(tabId, element) {
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
-    
+
     document.getElementById(tabId).classList.add('active');
     element.classList.add('active');
 }
@@ -187,19 +187,19 @@ async function atualizarDadosDashboard() {
             document.getElementById('bpmStatus').classList.remove('status-normal');
             document.getElementById('spo2Status').classList.remove('status-normal');
 
-        const condicao = document.getElementById('condicaoGeralTexto');
+            const condicao = document.getElementById('condicaoGeralTexto');
 
-        if (condicao) {
-            condicao.textContent = 'SEM SINAL';
-            condicao.style.color = 'var(--accent-yellow)';
+            if (condicao) {
+                condicao.textContent = 'SEM SINAL';
+                condicao.style.color = 'var(--accent-yellow)';
+            }
+
+            return;
         }
-
-        return;
-    }
         const bpm = dados.bpm || 0;
         const spo2 = dados.spo2 || 0;
-        
-        
+
+
         const bpmStatus = document.getElementById('bpmStatus');
         const spo2Status = document.getElementById('spo2Status');
 
@@ -223,12 +223,12 @@ async function atualizarDadosDashboard() {
 
             const elementoCondicao = document.getElementById('condicaoGeralTexto');
 
-        if (elementoCondicao) {
-            elementoCondicao.textContent = "SEM MEDIÇÃO";
-            elementoCondicao.style.color = "var(--accent-yellow)";
-        }
+            if (elementoCondicao) {
+                elementoCondicao.textContent = "SEM MEDIÇÃO";
+                elementoCondicao.style.color = "var(--accent-yellow)";
+            }
 
-        return;
+            return;
         }
 
         if (bpm === -1 || spo2 === -1) {
@@ -236,7 +236,7 @@ async function atualizarDadosDashboard() {
             atualizarIndicadores('Calculando...', 'Calculando...', false);
             document.getElementById('bpmValue').innerHTML = '<span style="font-size: 0.5em; color: var(--accent-blue);">Lendo...</span>';
             document.getElementById('spo2Value').innerHTML = '<span style="font-size: 0.5em; color: var(--accent-blue);">Lendo...</span>';
-            
+
             // Muda o texto do status geral
             const elementoCondicao = document.getElementById('condicaoGeralTexto');
             if (elementoCondicao) {
@@ -373,6 +373,8 @@ function inicializarGraficoPerformance() {
 document.addEventListener('DOMContentLoaded', () => {
     inicializarGraficoSaude();
     inicializarGraficoPerformance();
+    inicializarGraficoAlgoritmos();
+
     carregarPacientes();
 
     setInterval(verificarStatusConexaoESP, 3000);
@@ -395,7 +397,7 @@ async function exportarRelatorioCSV() {
             return;
         }
 
-  
+
         let csvContent = "data:text/csv;charset=utf-8,ID,Dispositivo,BPM,SpO2,DataHora\n";
 
         dados.forEach(row => {
@@ -407,7 +409,7 @@ async function exportarRelatorioCSV() {
         link.setAttribute("href", encodedUri);
         link.setAttribute("download", `relatorio_bioiot_${tipo}.csv`);
         document.body.appendChild(link);
-        
+
         link.click();
         document.body.removeChild(link);
 
