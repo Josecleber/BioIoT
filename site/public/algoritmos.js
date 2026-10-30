@@ -528,3 +528,334 @@ function executarAnalisePrecisao() {
         </div>
     `;
 }
+
+
+async function analisarHistoricoReal() {
+    const saida = document.getElementById('resultadoHistoricoReal');
+    const quantidade = Number(
+        document.getElementById('quantidadeHistorico').value
+    );
+
+    if (!saida || ![10, 50, 100, 500].includes(quantidade)) return;
+
+    saida.textContent = 'Consultando o banco SQLite...';
+
+    try {
+        const url = '/api/algoritmos/medicoes?' +
+            new URLSearchParams({
+                dispositivo: 'ESP32-BANCADA-01',
+                quantidade: String(quantidade)
+            });
+
+        const resposta = await fetch(url);
+        if (!resposta.ok) throw new Error('Falha na consulta ao servidor.');
+
+        const resultado = await resposta.json();
+        const medicoes = resultado.medicoes;
+
+        if (!Array.isArray(medicoes) || medicoes.length === 0) {
+            saida.textContent = 'Nenhuma medição encontrada.';
+            return;
+        }
+
+
+        // Busca linear aplicada aos registros reais.
+        const campoBusca = document.getElementById('bpmBuscaHistorico');
+        const textoBusca = campoBusca ? campoBusca.value.trim() : '';
+
+        let resultadoBusca = '';
+
+        if (textoBusca !== '') {
+            const bpmProcurado = Number(textoBusca);
+
+            if (!Number.isInteger(bpmProcurado) ||
+                bpmProcurado < 1 || bpmProcurado > 300) {
+                throw new Error('Informe um BPM inteiro entre 1 e 300.');
+            }
+
+            let verificacoes = 0;
+            const encontrados = [];
+
+            for (const registro of medicoes) {
+                verificacoes++;
+
+                if (registro.bpm === bpmProcurado) {
+                    encontrados.push(registro);
+                }
+            }
+
+            const formatoBusca = new Intl.NumberFormat('pt-BR');
+
+            resultadoBusca = `
+                <div style="margin-top: 1.5rem;
+                            padding-top: 1rem;
+                            border-top: 1px solid var(--card-border);">
+
+                    <h4 style="color: var(--accent-blue);">
+                        Resultado da busca linear
+                    </h4>
+
+                    <p><strong>BPM pesquisado:</strong>
+                        ${bpmProcurado}</p>
+
+                    <p><strong>Registros encontrados:</strong>
+                        ${formatoBusca.format(encontrados.length)}</p>
+
+                    <p><strong>Verificações realizadas:</strong>
+                        ${formatoBusca.format(verificacoes)}</p>
+
+                    <p><strong>Complexidade temporal:</strong>
+                        Θ(n) para esta busca completa.</p>
+
+                    <p style="margin-top: 0.5rem;">
+                        ${encontrados.length > 0
+                    ? 'IDs encontrados: ' +
+                    encontrados.map(r => r.id).join(', ')
+                    : 'Nenhuma medição com esse BPM foi encontrada.'}
+                    </p>
+                </div>
+            `;
+        }
+
+        // Ordenação recursiva de registros reais pelo BPM.
+        let comparacoes = 0;
+
+        function mergeSortRegistros(lista) {
+            if (lista.length <= 1) return [...lista];
+
+            const meio = Math.floor(lista.length / 2);
+            const esquerda = mergeSortRegistros(lista.slice(0, meio));
+            const direita = mergeSortRegistros(lista.slice(meio));
+
+            const ordenados = [];
+            let i = 0;
+            let j = 0;
+
+            while (i < esquerda.length && j < direita.length) {
+                comparacoes++;
+
+                if (esquerda[i].bpm <= direita[j].bpm) {
+                    ordenados.push(esquerda[i++]);
+                } else {
+                    ordenados.push(direita[j++]);
+                }
+            }
+
+            return ordenados.concat(
+                esquerda.slice(i),
+                direita.slice(j)
+            );
+        }
+
+        const inicio = performance.now();
+        const ordenados = mergeSortRegistros(medicoes);
+        const tempo = performance.now() - inicio;
+
+
+        // Solicita ao SQLite a ordenação da mesma amostra.
+        const respostaSQLite = await fetch(
+            '/api/algoritmos/comparar-sqlite',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    dispositivo: 'ESP32-BANCADA-01',
+                    ids: medicoes.map(registro => registro.id)
+                })
+            }
+        );
+
+        if (!respostaSQLite.ok) {
+            throw new Error('Não foi possível comparar com o SQLite.');
+        }
+
+        const resultadoSQLite = await respostaSQLite.json();
+
+        const idsMerge = ordenados.map(registro => registro.id);
+        const idsSQLite = resultadoSQLite.medicoes.map(registro => registro.id);
+
+        const resultadosIguais =
+            JSON.stringify(idsMerge) === JSON.stringify(idsSQLite);
+
+        if (!resultadosIguais) {
+            throw new Error(
+                'A ordem dos registros difere entre Merge Sort e SQLite.'
+            );
+        }
+
+        // Selection Sort aplicado aos mesmos registros reais.
+        let comparacoesSelection = 0;
+
+        function selectionSortRegistros(lista) {
+            const dados = [...lista];
+
+            for (let i = 0; i < dados.length - 1; i++) {
+                let menor = i;
+
+                for (let j = i + 1; j < dados.length; j++) {
+                    comparacoesSelection++;
+
+                    if (dados[j].bpm < dados[menor].bpm) {
+                        menor = j;
+                    }
+                }
+
+                if (menor !== i) {
+                    [dados[i], dados[menor]] =
+                        [dados[menor], dados[i]];
+                }
+            }
+
+            return dados;
+        }
+
+        const inicioSelection = performance.now();
+        const ordenadosSelection = selectionSortRegistros(medicoes);
+        const tempoSelection = performance.now() - inicioSelection;
+
+        // Confere os resultados independentemente da ordem
+        // dos registros com BPM igual.
+        const bpmMerge = ordenados.map(registro => registro.bpm);
+        const bpmSelection = ordenadosSelection.map(registro => registro.bpm);
+
+        if (JSON.stringify(bpmMerge) !== JSON.stringify(bpmSelection)) {
+            throw new Error('Os algoritmos produziram resultados diferentes.');
+        }
+
+        // Verifica a ordenação sem modificar os registros originais.
+        const correto = ordenados.every(
+            (registro, i) => i === 0 ||
+                ordenados[i - 1].bpm <= registro.bpm
+        );
+
+        const mesmaQuantidade = ordenados.length === medicoes.length;
+
+        if (!correto || !mesmaQuantidade) {
+            throw new Error('Falha ao validar a ordenação.');
+        }
+
+        // Estatísticas descritivas do histórico real.
+        // Uma passagem pelos registros: O(n).
+        let somaBPM = 0;
+        let somaSpO2 = 0;
+        let bpmMinimo = Infinity;
+        let bpmMaximo = -Infinity;
+
+        for (const registro of medicoes) {
+            somaBPM += registro.bpm;
+            somaSpO2 += registro.spo2;
+
+            if (registro.bpm < bpmMinimo) bpmMinimo = registro.bpm;
+            if (registro.bpm > bpmMaximo) bpmMaximo = registro.bpm;
+        }
+
+        const mediaBPM = somaBPM / medicoes.length;
+        const mediaSpO2 = somaSpO2 / medicoes.length;
+
+        const formato = new Intl.NumberFormat('pt-BR');
+
+        const exemplos = ordenados.slice(0, 15).map(registro => `
+            <tr>
+                <td style="padding: 8px;">${registro.id}</td>
+                <td style="padding: 8px;">${registro.bpm}</td>
+                <td style="padding: 8px;">${registro.spo2}%</td>
+            </tr>
+        `).join('');
+
+        saida.innerHTML = `
+            <div style="padding: 1rem; border: 1px solid var(--card-border);
+                        border-radius: 8px;">
+                <p><strong>Origem:</strong> SQLite — ESP32-BANCADA-01</p>
+                <p><strong>Medições encontradas:</strong>
+                    ${formato.format(medicoes.length)}</p>
+                <p><strong>Algoritmo:</strong> Merge Sort recursivo</p>
+                <p><strong>Comparações:</strong>
+                    ${formato.format(comparacoes)}</p>
+                <p><strong>Tempo da ordenação:</strong>
+                    ${tempo.toFixed(4)} ms</p>
+                <p><strong>Complexidade:</strong> Θ(n log n)</p>
+
+                <h4 style="color: var(--accent-blue); margin-top: 1rem;">
+    Comparação com a ordenação do SQLite
+</h4>
+
+<p><strong>Merge Sort:</strong>
+    ${tempo.toFixed(4)} ms de ordenação no navegador</p>
+
+<p><strong>SQLite:</strong>
+    ${resultadoSQLite.tempoConsultaMs.toFixed(4)} ms de consulta no servidor</p>
+
+<p><strong>Registros comparados:</strong>
+    ${medicoes.length}</p>
+
+<p style="color: var(--accent-green);">
+    Os dois métodos produziram a mesma sequência de registros.
+</p>
+
+<p style="color: var(--text-muted); margin-top: 0.5rem;">
+    Os tempos representam operações diferentes:
+    Merge Sort mede somente a ordenação;
+    SQLite mede a consulta até o retorno ao servidor.
+    Por isso, não são diretamente comparáveis como benchmark.
+</p>
+
+                <h4 style="color: var(--accent-blue); margin-top: 1rem;">
+                    Comparação com Selection Sort
+                </h4>
+
+                <p><strong>Selection Sort:</strong>
+                    ${formato.format(comparacoesSelection)} comparações
+                    — ${tempoSelection.toFixed(4)} ms</p>
+
+                <p><strong>Complexidade:</strong> Θ(n²)</p>
+
+                <p><strong>Merge Sort:</strong>
+                    ${formato.format(comparacoes)} comparações
+                    — ${tempo.toFixed(4)} ms</p>
+
+                    <h4 style="color: var(--accent-blue); margin-top: 1.5rem;">
+    Estatísticas do histórico real
+</h4>
+
+<p><strong>BPM mínimo:</strong> ${bpmMinimo}</p>
+<p><strong>BPM máximo:</strong> ${bpmMaximo}</p>
+<p><strong>BPM médio:</strong> ${mediaBPM.toFixed(2)}</p>
+<p><strong>SpO₂ médio:</strong> ${mediaSpO2.toFixed(2)}%</p>
+<p><strong>Complexidade do cálculo:</strong> Θ(n)</p>
+
+                <h4 style="color: var(--accent-blue); margin-top: 1rem;">
+                    Primeiros 15 registros ordenados por BPM
+                </h4>
+
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; text-align: left;">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>BPM</th>
+                                <th>SpO₂</th>
+                            </tr>
+                        </thead>
+                        <tbody>${exemplos}</tbody>
+                    </table>
+                </div>
+
+                <p style="color: var(--accent-green); margin-top: 1rem;">
+                    Ordenação crescente verificada com sucesso.
+                </p>
+
+                <p style="color: var(--text-muted); margin-top: 0.8rem;">
+                    Análise realizada sobre registros históricos reais.
+                    Os dados armazenados não foram modificados.
+                    O tempo medido inclui somente a ordenação no navegador.
+                </p>
+
+                ${resultadoBusca}
+            </div>
+        `;
+    } catch (erro) {
+        saida.textContent = `Erro: ${erro.message}`;
+    }
+}

@@ -61,7 +61,7 @@ app.get('/api/status-esp', (req, res) => {
     }
     const tempoDecorrido = Date.now() - ultimaConexaoESP;
     const online = tempoDecorrido < 10000;
-    
+
     res.json({ online });
 });
 
@@ -89,11 +89,11 @@ app.post('/api/dados', (req, res) => {
     }
 
     // Leitura real
-    estadosUI[dispositivo] = { bpm, spo2 }; 
+    estadosUI[dispositivo] = { bpm, spo2 };
     const query = `INSERT INTO leituras (dispositivo, bpm, spo2) VALUES (?, ?, ?)`;
-    db.run(query, [dispositivo, bpm, spo2], function(err) {
+    db.run(query, [dispositivo, bpm, spo2], function (err) {
         if (err) return res.status(500).json({ erro: err.message });
-        
+
         console.log(`[IoT Saúde] Disp: ${dispositivo} | BPM: ${bpm} | SpO2: ${spo2}%`);
         res.status(201).json({ status: 'Sucesso', leituraId: this.lastID });
     });
@@ -101,7 +101,7 @@ app.post('/api/dados', (req, res) => {
 
 app.delete('/api/pacientes/:id', (req, res) => {
     const { id } = req.params;
-    db.run(`DELETE FROM pacientes WHERE id = ?`, id, function(err) {
+    db.run(`DELETE FROM pacientes WHERE id = ?`, id, function (err) {
         if (err) return res.status(500).json({ erro: err.message });
         res.json({ mensagem: 'Paciente removido com sucesso', linhasAfetadas: this.changes });
     });
@@ -115,9 +115,9 @@ app.post('/api/dados', (req, res) => {
     }
 
     const query = `INSERT INTO leituras (dispositivo, bpm, spo2) VALUES (?, ?, ?)`;
-    db.run(query, [dispositivo, bpm, spo2], function(err) {
+    db.run(query, [dispositivo, bpm, spo2], function (err) {
         if (err) return res.status(500).json({ erro: err.message });
-        
+
         ultimaConexaoESP = Date.now();
 
         console.log(`[IoT Recebido] Disp: ${dispositivo} | BPM: ${bpm} | SpO2: ${spo2}%`);
@@ -127,12 +127,12 @@ app.post('/api/dados', (req, res) => {
 
 app.get('/api/dados/ultimo/:dispositivo', (req, res) => {
     const { dispositivo } = req.params;
-    
+
     // Verifica se a placa está num estado visual
     if (estadosUI[dispositivo] && estadosUI[dispositivo].bpm <= 0) {
         return res.json(estadosUI[dispositivo]); // Entrega o 0 ou -1 diretamente ao site
     }
-    
+
     // Caso contrário, busca a leitura real mais recente
     const query = `SELECT * FROM leituras WHERE dispositivo = ? ORDER BY id DESC LIMIT 1`;
     db.get(query, [dispositivo], (err, row) => {
@@ -155,6 +155,161 @@ app.get('/api/relatorios/individual/:dispositivo', (req, res) => {
     db.all(query, [dispositivo], (err, rows) => {
         if (err) return res.status(500).json({ erro: err.message });
         res.json(rows);
+    });
+});
+
+
+/*
+ * BIOIOT - ANÁLISE DE ALGORITMOS COM DADOS REAIS
+ *
+ * Retorna as últimas medições registradas no SQLite.
+ * Não altera nem remove informações do banco.
+ */
+app.get('/api/algoritmos/medicoes', (req, res) => {
+    const dispositivo = String(req.query.dispositivo || 'ESP32-BANCADA-01');
+    const quantidade = Number(req.query.quantidade || 100);
+
+    // Limita a quantidade de dados processados.
+    if (
+        !Number.isInteger(quantidade) ||
+        quantidade < 1 ||
+        quantidade > 1000
+    ) {
+        return res.status(400).json({
+            erro: 'Quantidade deve estar entre 1 e 1000'
+        });
+    }
+
+    const query = `
+        SELECT id, dispositivo, bpm, spo2, timestamp
+        FROM leituras
+        WHERE dispositivo = ?
+        ORDER BY id DESC
+        LIMIT ?
+    `;
+
+    db.all(query, [dispositivo, quantidade], (err, rows) => {
+        if (err) {
+            return res.status(500).json({
+                erro: 'Erro ao consultar medições'
+            });
+        }
+
+        res.json({
+            dispositivo,
+            quantidadeSolicitada: quantidade,
+            quantidadeEncontrada: rows.length,
+            origem: 'SQLite - medições reais registradas pelo ESP32',
+            medicoes: rows
+        });
+    });
+});
+
+
+/*
+ * Ordenação de uma mesma amostra de registros no SQLite.
+ * Não altera os dados armazenados.
+ */
+app.get('/api/algoritmos/ordenacao-sqlite', (req, res) => {
+    const dispositivo = String(
+        req.query.dispositivo || 'ESP32-BANCADA-01'
+    );
+
+    const quantidade = Number(req.query.quantidade || 50);
+
+    if (!Number.isInteger(quantidade) ||
+        quantidade < 1 || quantidade > 1000) {
+        return res.status(400).json({
+            erro: 'Quantidade inválida'
+        });
+    }
+
+    const inicio = process.hrtime.bigint();
+
+    const query = `
+        SELECT id, dispositivo, bpm, spo2, timestamp
+        FROM (
+            SELECT id, dispositivo, bpm, spo2, timestamp
+            FROM leituras
+            WHERE dispositivo = ?
+            ORDER BY id DESC
+            LIMIT ?
+        )
+        ORDER BY bpm ASC, id DESC
+    `;
+
+    db.all(query, [dispositivo, quantidade], (err, rows) => {
+        if (err) {
+            return res.status(500).json({
+                erro: 'Falha ao ordenar medições'
+            });
+        }
+
+        const tempoMs = Number(
+            process.hrtime.bigint() - inicio
+        ) / 1e6;
+
+        res.json({
+            dispositivo,
+            quantidadeEncontrada: rows.length,
+            ordenacao: 'SQLite ORDER BY bpm ASC, id DESC',
+            tempoConsultaMs: tempoMs,
+            medicoes: rows
+        });
+    });
+});
+
+
+app.post('/api/algoritmos/comparar-sqlite', (req, res) => {
+    const { dispositivo, ids } = req.body;
+
+    if (
+        typeof dispositivo !== 'string' ||
+        !Array.isArray(ids) ||
+        ids.length < 1 ||
+        ids.length > 1000 ||
+        !ids.every(id => Number.isSafeInteger(id) && id > 0) ||
+        new Set(ids).size !== ids.length
+    ) {
+        return res.status(400).json({
+            erro: 'Amostra de registros inválida'
+        });
+    }
+
+    const marcadores = ids.map(() => '?').join(',');
+
+    const query = `
+        SELECT id, dispositivo, bpm, spo2, timestamp
+        FROM leituras
+        WHERE dispositivo = ?
+          AND id IN (${marcadores})
+        ORDER BY bpm ASC, id DESC
+    `;
+
+    const inicio = process.hrtime.bigint();
+
+    db.all(query, [dispositivo, ...ids], (erro, registros) => {
+        if (erro) {
+            return res.status(500).json({
+                erro: 'Erro na consulta ao SQLite'
+            });
+        }
+
+        const tempoConsultaMs =
+            Number(process.hrtime.bigint() - inicio) / 1e6;
+
+        if (registros.length !== ids.length) {
+            return res.status(409).json({
+                erro: 'A amostra mudou durante a comparação'
+            });
+        }
+
+        res.json({
+            metodo: 'SQLite ORDER BY bpm ASC, id DESC',
+            quantidade: registros.length,
+            tempoConsultaMs,
+            medicoes: registros
+        });
     });
 });
 
