@@ -319,8 +319,13 @@
                         e precisão numérica.
                     </p>
                     <p style="margin-top: 0.8rem; color: var(--text-muted);">
-                        Os experimentos utilizam dados simulados para fins acadêmicos
-                        e não interferem nas medições reais do ESP32.
+                        O módulo utiliza medições reais registradas pelo ESP32
+                        para demonstrar algoritmos de busca, ordenação e análise
+                        estatística. Também apresenta experimentos acadêmicos
+                        com dados simulados para estudar complexidade temporal,
+                        espacial, recursividade, intratabilidade e precisão
+                        numérica. As análises não modificam o histórico
+                        armazenado no banco de dados.
                     </p>
                 </div>
 
@@ -361,213 +366,6 @@
                         </p>
                     </div>
                 </div>
-
-                <div class="card" style="margin-top: 1.5rem;">
-                    <h3 style="color: var(--accent-blue); margin-bottom: 1rem;">
-                        Laboratório Interativo de Algoritmos
-                    </h3>
-
-                    <p style="color: var(--text-muted); margin-bottom: 1rem;">
-                        Execute uma comparação entre Selection Sort e Merge Sort
-                        utilizando dados simulados de BPM.
-                    </p>
-
-                    <div style="display: flex; gap: 1rem; align-items: end; flex-wrap: wrap;">
-                        <div>
-                            <label for="quantidadeAlgoritmos" style="display: block; margin-bottom: 0.5rem;">
-                                Quantidade de medições
-                            </label>
-
-                            <select id="quantidadeAlgoritmos" style="padding: 0.7rem; background: #0f172a;
-                           color: white; border: 1px solid var(--card-border);
-                           border-radius: 6px;">
-                                <option value="10">10 medições</option>
-                                <option value="100">100 medições</option>
-                                <option value="500">500 medições</option>
-                                <option value="1000">1.000 medições</option>
-                                <option value="5000">5.000 medições</option>
-                            </select>
-                        </div>
-
-                        <button type="button" onclick="executarLaboratorioAlgoritmos()" style="background: var(--accent-blue); color: #00111f;
-                       padding: 0.75rem 1.2rem; border: none;
-                       border-radius: 6px; font-weight: bold; cursor: pointer;">
-                            Executar comparação
-                        </button>
-                    </div>
-
-                    <div id="resultadoLaboratorio" aria-live="polite"
-                        style="margin-top: 1.5rem; color: var(--text-muted);">
-                        Escolha uma quantidade de medições e execute o experimento.
-                    </div>
-
-                    <div id="graficoLaboratorioContainer" style="display: none; margin-top: 1.5rem;">
-
-                        <h3 style="color: var(--accent-blue); margin-bottom: 1rem;">
-                            Comparação executada no navegador
-                        </h3>
-
-                        <p style="color: var(--text-muted); margin-bottom: 1rem;">
-                            Quantidade de comparações realizadas pelos algoritmos
-                            na execução selecionada.
-                        </p>
-
-                        <div style="position: relative; height: 280px; width: 100%;">
-                            <canvas id="graficoLaboratorio"></canvas>
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-                <div class="card" style="margin-top: 1.5rem;">
-                    <h3 style="color: var(--accent-blue); margin-bottom: 1rem;">
-                        Recursividade e Teorema Mestre
-                    </h3>
-
-                    <p style="color: var(--text-muted); margin-bottom: 1rem;">
-                        Observe como o Merge Sort divide um problema em partes
-                        menores e como cresce sua profundidade recursiva.
-                    </p>
-
-                    <div style="display: flex; gap: 1rem; align-items: end; flex-wrap: wrap;">
-                        <div>
-                            <label for="quantidadeRecursao" style="display: block; margin-bottom: 0.5rem;">
-                                Quantidade de elementos
-                            </label>
-
-                            <select id="quantidadeRecursao" style="padding: 0.7rem; background: #0f172a;
-                           color: white; border: 1px solid var(--card-border);
-                           border-radius: 6px;">
-                                <option value="8">8 elementos</option>
-                                <option value="16">16 elementos</option>
-                                <option value="32">32 elementos</option>
-                                <option value="64">64 elementos</option>
-                                <option value="128">128 elementos</option>
-                                <option value="256">256 elementos</option>
-                                <option value="512">512 elementos</option>
-                                <option value="1024">1.024 elementos</option>
-                            </select>
-                        </div>
-
-                        <button type="button" onclick="executarAnaliseRecursao()" style="background: var(--accent-blue); color: #00111f;
-                       padding: 0.75rem 1.2rem; border: none;
-                       border-radius: 6px; font-weight: bold; cursor: pointer;">
-                            Analisar recursividade
-                        </button>
-                    </div>
-
-                    <div id="resultadoRecursao" aria-live="polite"
-                        style="margin-top: 1.5rem; color: var(--text-muted);">
-                        Selecione uma quantidade de elementos para iniciar a análise.
-                    </div>
-                </div>
-
-                <!-- LABORATÓRIO DE COMPLEXIDADE ESPACIAL -->
-                <div class="card" style="margin-top: 1.5rem;">
-                    <h3 style="color: var(--accent-blue); margin-bottom: 1rem;">
-                        Análise de Complexidade Espacial
-                    </h3>
-
-                    <p style="color: var(--text-muted); margin-bottom: 1rem;">
-                        Compare a memória auxiliar necessária para o Selection Sort
-                        no próprio array e para o Merge Sort com buffer.
-                    </p>
-
-                    <div style="display: flex; gap: 1rem; align-items: end; flex-wrap: wrap;">
-                        <div>
-                            <label for="quantidadeMemoria" style="display: block; margin-bottom: 0.5rem;">
-                                Quantidade de elementos
-                            </label>
-
-                            <select id="quantidadeMemoria" style="padding: 0.7rem; background: #0f172a;
-                           color: white; border: 1px solid var(--card-border);
-                           border-radius: 6px;">
-                                <option value="10">10 elementos</option>
-                                <option value="100">100 elementos</option>
-                                <option value="1000">1.000 elementos</option>
-                                <option value="10000">10.000 elementos</option>
-                            </select>
-                        </div>
-
-                        <button type="button" onclick="executarAnaliseMemoria()" style="background: var(--accent-blue); color: #00111f;
-                       padding: 0.75rem 1.2rem; border: none;
-                       border-radius: 6px; font-weight: bold; cursor: pointer;">
-                            Analisar memória
-                        </button>
-                    </div>
-
-                    <div id="resultadoMemoria" aria-live="polite" style="margin-top: 1.5rem; color: var(--text-muted);">
-                        Selecione uma quantidade de elementos e execute a análise.
-                    </div>
-                </div>
-
-
-                <!-- LABORATÓRIO DE INTRATABILIDADE - AULAS 7 E 8 -->
-                <div class="card" style="margin-top: 1.5rem;">
-                    <h3 style="color: var(--accent-blue); margin-bottom: 1rem;">
-                        Classes P, NP e Intratabilidade
-                    </h3>
-
-                    <p style="color: var(--text-muted); margin-bottom: 1rem;">
-                        Investigue o problema Subset Sum: existe um subconjunto
-                        de valores cuja soma é igual ao alvo?
-                    </p>
-
-                    <div style="display: flex; gap: 1rem; align-items: end; flex-wrap: wrap;">
-                        <div>
-                            <label for="quantidadeIntratabilidade" style="display: block; margin-bottom: 0.5rem;">
-                                Quantidade de elementos
-                            </label>
-
-                            <select id="quantidadeIntratabilidade" style="padding: 0.7rem; background: #0f172a;
-                           color: white; border: 1px solid var(--card-border);
-                           border-radius: 6px;">
-                                <option value="8">8 elementos</option>
-                                <option value="12">12 elementos</option>
-                                <option value="16">16 elementos</option>
-                                <option value="18">18 elementos</option>
-                            </select>
-                        </div>
-
-                        <button type="button" onclick="executarAnaliseIntratabilidade()" style="background: var(--accent-blue); color: #00111f;
-                       padding: 0.75rem 1.2rem; border: none;
-                       border-radius: 6px; font-weight: bold; cursor: pointer;">
-                            Executar experimento
-                        </button>
-                    </div>
-
-                    <div id="resultadoIntratabilidade" aria-live="polite"
-                        style="margin-top: 1.5rem; color: var(--text-muted);">
-                        Selecione uma quantidade de elementos para iniciar.
-                    </div>
-                </div>
-
-
-                <!-- AULA 9: PRECISÃO NUMÉRICA E MODELO BSS -->
-                <div class="card" style="margin-top: 1.5rem;">
-                    <h3 style="color: var(--accent-blue); margin-bottom: 1rem;">
-                        Complexidade Contínua e Precisão Numérica
-                    </h3>
-
-                    <p style="color: var(--text-muted); margin-bottom: 1rem;">
-                        Compare valores decimais com valores arredondados e observe
-                        a diferença entre a computação real e o modelo teórico BSS.
-                    </p>
-
-                    <button type="button" onclick="executarAnalisePrecisao()" style="background: var(--accent-blue); color: #00111f;
-                   padding: 0.75rem 1.2rem; border: none;
-                   border-radius: 6px; font-weight: bold; cursor: pointer;">
-                        Analisar precisão numérica
-                    </button>
-
-                    <div id="resultadoPrecisao" aria-live="polite"
-                        style="margin-top: 1.5rem; color: var(--text-muted);">
-                        Clique no botão para executar o experimento.
-                    </div>
-                </div>
-
 
                 <!-- ANALISE DE DADOS REAIS DO ESP32 -->
                 <div class="card" style="margin-top: 1.5rem;">
@@ -621,6 +419,229 @@
                         Escolha uma quantidade e consulte os registros do ESP32.
                     </div>
                 </div>
+
+                <details class="card" style="margin-top: 1.5rem;">
+                    <summary style="color: var(--accent-blue);
+                    font-size: 1.15rem;
+                    font-weight: bold;
+                    cursor: pointer;
+                    padding: 0.5rem 0;">
+                        Laboratório Interativo de Algoritmos
+                    </summary>
+
+                    <p style="color: var(--text-muted); margin-bottom: 1rem;">
+                        Execute uma comparação entre Selection Sort e Merge Sort
+                        utilizando dados simulados de BPM.
+                    </p>
+
+                    <div style="display: flex; gap: 1rem; align-items: end; flex-wrap: wrap;">
+                        <div>
+                            <label for="quantidadeAlgoritmos" style="display: block; margin-bottom: 0.5rem;">
+                                Quantidade de medições
+                            </label>
+
+                            <select id="quantidadeAlgoritmos" style="padding: 0.7rem; background: #0f172a;
+                           color: white; border: 1px solid var(--card-border);
+                           border-radius: 6px;">
+                                <option value="10">10 medições</option>
+                                <option value="100">100 medições</option>
+                                <option value="500">500 medições</option>
+                                <option value="1000">1.000 medições</option>
+                                <option value="5000">5.000 medições</option>
+                            </select>
+                        </div>
+
+                        <button type="button" onclick="executarLaboratorioAlgoritmos()" style="background: var(--accent-blue); color: #00111f;
+                       padding: 0.75rem 1.2rem; border: none;
+                       border-radius: 6px; font-weight: bold; cursor: pointer;">
+                            Executar comparação
+                        </button>
+                    </div>
+
+                    <div id="resultadoLaboratorio" aria-live="polite"
+                        style="margin-top: 1.5rem; color: var(--text-muted);">
+                        Escolha uma quantidade de medições e execute o experimento.
+                    </div>
+
+                    <div id="graficoLaboratorioContainer" style="display: none; margin-top: 1.5rem;">
+
+                        <h3 style="color: var(--accent-blue); margin-bottom: 1rem;">
+                            Comparação executada no navegador
+                        </h3>
+
+                        <p style="color: var(--text-muted); margin-bottom: 1rem;">
+                            Quantidade de comparações realizadas pelos algoritmos
+                            na execução selecionada.
+                        </p>
+
+                        <div style="position: relative; height: 280px; width: 100%;">
+                            <canvas id="graficoLaboratorio"></canvas>
+                        </div>
+
+                    </div>
+
+                </details>
+
+                <details class="card" style="margin-top: 1.5rem;">
+                    <summary style="color: var(--accent-blue);
+                    font-size: 1.15rem;
+                    font-weight: bold;
+                    cursor: pointer;
+                    padding: 0.5rem 0;">
+                        Recursividade e Teorema Mestre
+                    </summary>
+
+                    <p style="color: var(--text-muted); margin-bottom: 1rem;">
+                        Observe como o Merge Sort divide um problema em partes
+                        menores e como cresce sua profundidade recursiva.
+                    </p>
+
+                    <div style="display: flex; gap: 1rem; align-items: end; flex-wrap: wrap;">
+                        <div>
+                            <label for="quantidadeRecursao" style="display: block; margin-bottom: 0.5rem;">
+                                Quantidade de elementos
+                            </label>
+
+                            <select id="quantidadeRecursao" style="padding: 0.7rem; background: #0f172a;
+                           color: white; border: 1px solid var(--card-border);
+                           border-radius: 6px;">
+                                <option value="8">8 elementos</option>
+                                <option value="16">16 elementos</option>
+                                <option value="32">32 elementos</option>
+                                <option value="64">64 elementos</option>
+                                <option value="128">128 elementos</option>
+                                <option value="256">256 elementos</option>
+                                <option value="512">512 elementos</option>
+                                <option value="1024">1.024 elementos</option>
+                            </select>
+                        </div>
+
+                        <button type="button" onclick="executarAnaliseRecursao()" style="background: var(--accent-blue); color: #00111f;
+                       padding: 0.75rem 1.2rem; border: none;
+                       border-radius: 6px; font-weight: bold; cursor: pointer;">
+                            Analisar recursividade
+                        </button>
+                    </div>
+
+                    <div id="resultadoRecursao" aria-live="polite"
+                        style="margin-top: 1.5rem; color: var(--text-muted);">
+                        Selecione uma quantidade de elementos para iniciar a análise.
+                    </div>
+                </details>
+
+                <!-- LABORATÓRIO DE COMPLEXIDADE ESPACIAL -->
+                <details class="card" style="margin-top: 1.5rem;">
+                    <summary style="color: var(--accent-blue);
+                    font-size: 1.15rem;
+                    font-weight: bold;
+                    cursor: pointer;
+                    padding: 0.5rem 0;">
+                        Análise de Complexidade Espacial
+                    </summary>
+
+                    <p style="color: var(--text-muted); margin-bottom: 1rem;">
+                        Compare a memória auxiliar necessária para o Selection Sort
+                        no próprio array e para o Merge Sort com buffer.
+                    </p>
+
+                    <div style="display: flex; gap: 1rem; align-items: end; flex-wrap: wrap;">
+                        <div>
+                            <label for="quantidadeMemoria" style="display: block; margin-bottom: 0.5rem;">
+                                Quantidade de elementos
+                            </label>
+
+                            <select id="quantidadeMemoria" style="padding: 0.7rem; background: #0f172a;
+                           color: white; border: 1px solid var(--card-border);
+                           border-radius: 6px;">
+                                <option value="10">10 elementos</option>
+                                <option value="100">100 elementos</option>
+                                <option value="1000">1.000 elementos</option>
+                                <option value="10000">10.000 elementos</option>
+                            </select>
+                        </div>
+
+                        <button type="button" onclick="executarAnaliseMemoria()" style="background: var(--accent-blue); color: #00111f;
+                       padding: 0.75rem 1.2rem; border: none;
+                       border-radius: 6px; font-weight: bold; cursor: pointer;">
+                            Analisar memória
+                        </button>
+                    </div>
+
+                    <div id="resultadoMemoria" aria-live="polite" style="margin-top: 1.5rem; color: var(--text-muted);">
+                        Selecione uma quantidade de elementos e execute a análise.
+                    </div>
+                </details>
+
+                <!-- LABORATÓRIO DE INTRATABILIDADE - AULAS 7 E 8 -->
+                <details class="card" style="margin-top: 1.5rem;">
+                    <summary style="color: var(--accent-blue);
+                    font-size: 1.15rem;
+                    font-weight: bold;
+                    cursor: pointer;
+                    padding: 0.5rem 0;">
+                        Classes P, NP e Intratabilidade
+                    </summary>
+
+                    <p style="color: var(--text-muted); margin-bottom: 1rem;">
+                        Investigue o problema Subset Sum: existe um subconjunto
+                        de valores cuja soma é igual ao alvo?
+                    </p>
+
+                    <div style="display: flex; gap: 1rem; align-items: end; flex-wrap: wrap;">
+                        <div>
+                            <label for="quantidadeIntratabilidade" style="display: block; margin-bottom: 0.5rem;">
+                                Quantidade de elementos
+                            </label>
+
+                            <select id="quantidadeIntratabilidade" style="padding: 0.7rem; background: #0f172a;
+                           color: white; border: 1px solid var(--card-border);
+                           border-radius: 6px;">
+                                <option value="8">8 elementos</option>
+                                <option value="12">12 elementos</option>
+                                <option value="16">16 elementos</option>
+                                <option value="18">18 elementos</option>
+                            </select>
+                        </div>
+
+                        <button type="button" onclick="executarAnaliseIntratabilidade()" style="background: var(--accent-blue); color: #00111f;
+                       padding: 0.75rem 1.2rem; border: none;
+                       border-radius: 6px; font-weight: bold; cursor: pointer;">
+                            Executar experimento
+                        </button>
+                    </div>
+
+                    <div id="resultadoIntratabilidade" aria-live="polite"
+                        style="margin-top: 1.5rem; color: var(--text-muted);">
+                        Selecione uma quantidade de elementos para iniciar.
+                    </div>
+                </details>
+
+                <!-- AULA 9: PRECISÃO NUMÉRICA E MODELO BSS -->
+                <details class="card" style="margin-top: 1.5rem;">
+                    <summary style="color: var(--accent-blue);
+                    font-size: 1.15rem;
+                    font-weight: bold;
+                    cursor: pointer;
+                    padding: 0.5rem 0;">
+                        Complexidade Contínua e Precisão Numérica
+                    </summary>
+
+                    <p style="color: var(--text-muted); margin-bottom: 1rem;">
+                        Compare valores decimais com valores arredondados e observe
+                        a diferença entre a computação real e o modelo teórico BSS.
+                    </p>
+
+                    <button type="button" onclick="executarAnalisePrecisao()" style="background: var(--accent-blue); color: #00111f;
+                   padding: 0.75rem 1.2rem; border: none;
+                   border-radius: 6px; font-weight: bold; cursor: pointer;">
+                        Analisar precisão numérica
+                    </button>
+
+                    <div id="resultadoPrecisao" aria-live="polite"
+                        style="margin-top: 1.5rem; color: var(--text-muted);">
+                        Clique no botão para executar o experimento.
+                    </div>
+                </details>
 
                 <div class="card" style="margin-top: 1.5rem;">
                     <h3 style="color: var(--accent-blue); margin-bottom: 1rem;">
