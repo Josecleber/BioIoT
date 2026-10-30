@@ -313,6 +313,12 @@ app.post('/api/algoritmos/comparar-sqlite', (req, res) => {
     });
 });
 
+app.get('/modulos/ordenacao_registros.js', (req, res) => {
+    res.sendFile(
+        path.join(__dirname, 'algoritmos', 'ordenacao_registros.js')
+    );
+});
+
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}! Acesse http://localhost:${PORT}`);
 });

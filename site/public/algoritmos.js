@@ -573,16 +573,11 @@ async function analisarHistoricoReal() {
                 throw new Error('Informe um BPM inteiro entre 1 e 300.');
             }
 
-            let verificacoes = 0;
-            const encontrados = [];
-
-            for (const registro of medicoes) {
-                verificacoes++;
-
-                if (registro.bpm === bpmProcurado) {
-                    encontrados.push(registro);
-                }
-            }
+            const { encontrados, verificacoes } =
+                window.BioIoTAlgoritmos.buscaLinearRegistros(
+                    medicoes,
+                    bpmProcurado
+                );
 
             const formatoBusca = new Intl.NumberFormat('pt-BR');
 
@@ -617,39 +612,17 @@ async function analisarHistoricoReal() {
             `;
         }
 
-        // Ordenação recursiva de registros reais pelo BPM.
-        let comparacoes = 0;
-
-        function mergeSortRegistros(lista) {
-            if (lista.length <= 1) return [...lista];
-
-            const meio = Math.floor(lista.length / 2);
-            const esquerda = mergeSortRegistros(lista.slice(0, meio));
-            const direita = mergeSortRegistros(lista.slice(meio));
-
-            const ordenados = [];
-            let i = 0;
-            let j = 0;
-
-            while (i < esquerda.length && j < direita.length) {
-                comparacoes++;
-
-                if (esquerda[i].bpm <= direita[j].bpm) {
-                    ordenados.push(esquerda[i++]);
-                } else {
-                    ordenados.push(direita[j++]);
-                }
-            }
-
-            return ordenados.concat(
-                esquerda.slice(i),
-                direita.slice(j)
-            );
-        }
 
         const inicio = performance.now();
-        const ordenados = mergeSortRegistros(medicoes);
+
+        const resultadoMerge =
+            window.BioIoTAlgoritmos.mergeSortRegistros(medicoes);
+
         const tempo = performance.now() - inicio;
+
+        const ordenados = resultadoMerge.registros;
+        const comparacoes = resultadoMerge.comparacoes;
+
 
 
         // Solicita ao SQLite a ordenação da mesma amostra.
@@ -685,35 +658,17 @@ async function analisarHistoricoReal() {
             );
         }
 
-        // Selection Sort aplicado aos mesmos registros reais.
-        let comparacoesSelection = 0;
 
-        function selectionSortRegistros(lista) {
-            const dados = [...lista];
-
-            for (let i = 0; i < dados.length - 1; i++) {
-                let menor = i;
-
-                for (let j = i + 1; j < dados.length; j++) {
-                    comparacoesSelection++;
-
-                    if (dados[j].bpm < dados[menor].bpm) {
-                        menor = j;
-                    }
-                }
-
-                if (menor !== i) {
-                    [dados[i], dados[menor]] =
-                        [dados[menor], dados[i]];
-                }
-            }
-
-            return dados;
-        }
-
+        // Selection Sort utilizando o módulo compartilhado.
         const inicioSelection = performance.now();
-        const ordenadosSelection = selectionSortRegistros(medicoes);
+
+        const resultadoSelection =
+            window.BioIoTAlgoritmos.selectionSortRegistros(medicoes);
+
         const tempoSelection = performance.now() - inicioSelection;
+
+        const ordenadosSelection = resultadoSelection.registros;
+        const comparacoesSelection = resultadoSelection.comparacoes;
 
         // Confere os resultados independentemente da ordem
         // dos registros com BPM igual.
