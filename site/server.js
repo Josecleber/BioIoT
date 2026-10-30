@@ -75,8 +75,27 @@ app.get('/api/pacientes', (req, res) => {
 app.post('/api/dados', (req, res) => {
     const { dispositivo, bpm, spo2 } = req.body;
 
-    if (!dispositivo || bpm === undefined || spo2 === undefined) {
-        return res.status(400).json({ erro: 'Dados incompletos enviados pelo ESP32' });
+    const dispositivoValido =
+        typeof dispositivo === 'string' &&
+        dispositivo.trim().length > 0 &&
+        dispositivo.length <= 100;
+
+    const estadoEspecial =
+        (bpm === 0 && spo2 === 0) ||
+        (bpm === -1 && spo2 === -1);
+
+    const leituraValida =
+        Number.isInteger(bpm) &&
+        Number.isInteger(spo2) &&
+        bpm >= 40 &&
+        bpm <= 160 &&
+        spo2 >= 75 &&
+        spo2 <= 100;
+
+    if (!dispositivoValido || (!estadoEspecial && !leituraValida)) {
+        return res.status(400).json({
+            erro: 'Dispositivo, BPM ou SpO2 inválidos'
+        });
     }
 
     ultimaConexaoESP = Date.now();
@@ -88,14 +107,37 @@ app.post('/api/dados', (req, res) => {
         return res.status(201).json({ status: 'Estado da interface atualizado' });
     }
 
-    // Leitura real
-    estadosUI[dispositivo] = { bpm, spo2 };
-    const query = `INSERT INTO leituras (dispositivo, bpm, spo2) VALUES (?, ?, ?)`;
-    db.run(query, [dispositivo, bpm, spo2], function (err) {
-        if (err) return res.status(500).json({ erro: err.message });
 
-        console.log(`[IoT Saúde] Disp: ${dispositivo} | BPM: ${bpm} | SpO2: ${spo2}%`);
-        res.status(201).json({ status: 'Sucesso', leituraId: this.lastID });
+    // Leitura real: grava no SQLite e atualiza o estado atual.
+    const query = `
+        INSERT INTO leituras (dispositivo, bpm, spo2)
+        VALUES (?, ?, ?)
+    `;
+
+    db.run(query, [dispositivo, bpm, spo2], function (err) {
+        if (err) {
+            return res.status(500).json({
+                erro: err.message
+            });
+        }
+
+        // Mantém em memória a última leitura válida recebida.
+        // O horário vem do servidor, não do relógio do navegador.
+        estadosUI[dispositivo] = {
+            id: this.lastID,
+            bpm,
+            spo2,
+            recebidaEm: Date.now()
+        };
+
+        console.log(
+            `[IoT Saúde] Disp: ${dispositivo} | BPM: ${bpm} | SpO2: ${spo2}%`
+        );
+
+        res.status(201).json({
+            status: 'Sucesso',
+            leituraId: this.lastID
+        });
     });
 });
 
@@ -107,20 +149,45 @@ app.delete('/api/pacientes/:id', (req, res) => {
     });
 });
 
+
+// Tempo máximo para considerar uma medição como atual.
+const TEMPO_MAXIMO_LEITURA_MS = 10000;
+
 app.get('/api/dados/ultimo/:dispositivo', (req, res) => {
     const { dispositivo } = req.params;
 
-    // Verifica se a placa está num estado visual
-    if (estadosUI[dispositivo] && estadosUI[dispositivo].bpm <= 0) {
-        return res.json(estadosUI[dispositivo]); // Entrega o 0 ou -1 diretamente ao site
+    const estado = estadosUI[dispositivo];
+
+    // Nenhum estado atual recebido desde a inicialização.
+    // Não reutiliza uma leitura antiga do banco SQLite.
+    if (!estado) {
+        return res.json({
+            bpm: 0,
+            spo2: 0
+        });
     }
 
-    // Caso contrário, busca a leitura real mais recente
-    const query = `SELECT * FROM leituras WHERE dispositivo = ? ORDER BY id DESC LIMIT 1`;
-    db.get(query, [dispositivo], (err, row) => {
-        if (err) return res.status(500).json({ erro: err.message });
-        res.json(row || { bpm: 0, spo2: 0 });
-    });
+    // Os estados sem dedo (0) e calculando (-1)
+    // continuam sendo enviados normalmente ao dashboard.
+    if (estado.bpm <= 0) {
+        return res.json(estado);
+    }
+
+    // Verifica a idade da última medição válida.
+    const idadeLeitura = Date.now() - estado.recebidaEm;
+
+    if (
+        !Number.isFinite(idadeLeitura) ||
+        idadeLeitura > TEMPO_MAXIMO_LEITURA_MS
+    ) {
+        return res.json({
+            bpm: 0,
+            spo2: 0
+        });
+    }
+
+    // Entrega somente uma medição válida e recente.
+    res.json(estado);
 });
 
 app.get('/api/relatorios/geral', (req, res) => {
