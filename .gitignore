@@ -12,3 +12,5 @@
 .env
 *.log
 .DS_Store
+site/public/app.backup.js
+site/public/app.backup.js
