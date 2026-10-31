@@ -8,11 +8,37 @@ let pacienteAtivo = {
 
 let realtimeChart = null;
 let performanceChart = null;
+let ultimoIdPlotado = null;
+let graficoEmPausa = false;
+
+function marcarInterrupcaoGrafico() {
+    if (!realtimeChart || graficoEmPausa) return;
+
+    if (realtimeChart.data.labels.length === 0) return;
+
+    realtimeChart.data.labels.push(
+        new Date().toLocaleTimeString('pt-BR')
+    );
+
+    realtimeChart.data.datasets.forEach(dataset => {
+        dataset.data.push(null);
+    });
+
+    while (realtimeChart.data.labels.length > 10) {
+        realtimeChart.data.labels.shift();
+        realtimeChart.data.datasets.forEach(dataset => {
+            dataset.data.shift();
+        });
+    }
+
+    graficoEmPausa = true;
+    realtimeChart.update();
+}
 
 function switchTab(tabId, element) {
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
-    
+
     document.getElementById(tabId).classList.add('active');
     element.classList.add('active');
 }
@@ -27,7 +53,7 @@ async function verificarStatusConexaoESP() {
 
         if (!dados.online) {
             if (elementoCondicao) {
-                elementoCondicao.textContent = "AGUARDANDO...";
+                elementoCondicao.textContent = "SEM SINAL";
                 elementoCondicao.style.color = "var(--accent-yellow)";
             }
             if (elementoDispositivo) {
@@ -35,10 +61,6 @@ async function verificarStatusConexaoESP() {
                 elementoDispositivo.style.color = "var(--accent-red)";
             }
         } else {
-            if (elementoCondicao) {
-                elementoCondicao.textContent = "NORMAL";
-                elementoCondicao.style.color = "var(--accent-green)";
-            }
             if (elementoDispositivo) {
                 elementoDispositivo.textContent = pacienteAtivo.dispositivo;
                 elementoDispositivo.style.color = "var(--text-main)";
@@ -121,6 +143,17 @@ async function excluirPaciente(id) {
 function selecionarPacienteParaMonitorar(id, nome, idade, dispositivo) {
     pacienteAtivo = { id, nome, idade, dispositivo };
 
+    ultimoIdPlotado = null;
+    graficoEmPausa = false;
+
+    if (realtimeChart) {
+        realtimeChart.data.labels = [];
+        realtimeChart.data.datasets.forEach(dataset => {
+            dataset.data = [];
+        });
+        realtimeChart.update();
+    }
+
     const elemNome = document.getElementById('activePatientName');
     const elemInfo = document.getElementById('activePatientInfo');
     if (elemNome) elemNome.textContent = nome;
@@ -139,13 +172,71 @@ async function atualizarDadosDashboard() {
         const res = await fetch(`/api/dados/ultimo/${pacienteAtivo.dispositivo}`);
         const dados = await res.json();
 
+        const respostaStatus = await fetch('/api/status-esp');
+        const statusESP = await respostaStatus.json();
+
+        if (!statusESP.online) {
+            marcarInterrupcaoGrafico();
+
+            document.getElementById('bpmValue').textContent = '--';
+            document.getElementById('spo2Value').textContent = '--';
+
+            document.getElementById('bpmStatus').textContent = 'Sem sinal';
+            document.getElementById('spo2Status').textContent = 'Sem sinal';
+
+            document.getElementById('bpmStatus').classList.remove('status-normal');
+            document.getElementById('spo2Status').classList.remove('status-normal');
+
+            const condicao = document.getElementById('condicaoGeralTexto');
+
+            if (condicao) {
+                condicao.textContent = 'SEM SINAL';
+                condicao.style.color = 'var(--accent-yellow)';
+            }
+
+            return;
+        }
         const bpm = dados.bpm || 0;
         const spo2 = dados.spo2 || 0;
 
+
+        const bpmStatus = document.getElementById('bpmStatus');
+        const spo2Status = document.getElementById('spo2Status');
+
+        function atualizarIndicadores(textoBpm, textoSpo2, valido) {
+            if (bpmStatus) {
+                bpmStatus.textContent = textoBpm;
+                bpmStatus.classList.toggle('status-normal', valido);
+            }
+
+            if (spo2Status) {
+                spo2Status.textContent = textoSpo2;
+                spo2Status.classList.toggle('status-normal', valido);
+            }
+        }
+
+        if (bpm === 0 || spo2 === 0) {
+            marcarInterrupcaoGrafico();
+            atualizarIndicadores('Sem medição', 'Sem medição', false);
+            document.getElementById('bpmValue').textContent = '--';
+            document.getElementById('spo2Value').textContent = '--';
+
+            const elementoCondicao = document.getElementById('condicaoGeralTexto');
+
+            if (elementoCondicao) {
+                elementoCondicao.textContent = "SEM MEDIÇÃO";
+                elementoCondicao.style.color = "var(--accent-yellow)";
+            }
+
+            return;
+        }
+
         if (bpm === -1 || spo2 === -1) {
+            marcarInterrupcaoGrafico();
+            atualizarIndicadores('Calculando...', 'Calculando...', false);
             document.getElementById('bpmValue').innerHTML = '<span style="font-size: 0.5em; color: var(--accent-blue);">Lendo...</span>';
             document.getElementById('spo2Value').innerHTML = '<span style="font-size: 0.5em; color: var(--accent-blue);">Lendo...</span>';
-            
+
             // Muda o texto do status geral
             const elementoCondicao = document.getElementById('condicaoGeralTexto');
             if (elementoCondicao) {
@@ -158,10 +249,26 @@ async function atualizarDadosDashboard() {
         document.getElementById('bpmValue').textContent = bpm;
         document.getElementById('spo2Value').textContent = spo2;
 
-        const agora = new Date().toLocaleTimeString();
+        atualizarIndicadores('Leitura disponível', 'Leitura disponível', true);
+
+        const elementoCondicao = document.getElementById('condicaoGeralTexto');
+
+        if (elementoCondicao) {
+            elementoCondicao.textContent = "LEITURA DISPONÍVEL";
+            elementoCondicao.style.color = "var(--accent-green)";
+        }
+
+        if (dados.id == null || dados.id === ultimoIdPlotado) {
+            return;
+        }
+
+        ultimoIdPlotado = dados.id;
+        graficoEmPausa = false;
+
+        const agora = new Date().toLocaleTimeString('pt-BR');
 
         if (realtimeChart) {
-            if (realtimeChart.data.labels.length > 10) {
+            if (realtimeChart.data.labels.length >= 10) {
                 realtimeChart.data.labels.shift();
                 realtimeChart.data.datasets[0].data.shift();
                 realtimeChart.data.datasets[1].data.shift();
@@ -207,7 +314,8 @@ function inicializarGraficoSaude() {
                     backgroundColor: 'rgba(239, 68, 68, 0.1)',
                     data: [],
                     tension: 0.3,
-                    fill: true
+                    spanGaps: false,
+                    fill: false
                 },
                 {
                     label: 'SpO₂ (%)',
@@ -215,13 +323,15 @@ function inicializarGraficoSaude() {
                     backgroundColor: 'rgba(59, 130, 246, 0.1)',
                     data: [],
                     tension: 0.3,
-                    fill: true
+                    spanGaps: false,
+                    fill: false
                 }
             ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: false,
             scales: {
                 y: { beginAtZero: true, grid: { color: '#334155' } },
                 x: { grid: { color: '#334155' } }
@@ -263,6 +373,8 @@ function inicializarGraficoPerformance() {
 document.addEventListener('DOMContentLoaded', () => {
     inicializarGraficoSaude();
     inicializarGraficoPerformance();
+    inicializarGraficoAlgoritmos();
+
     carregarPacientes();
 
     setInterval(verificarStatusConexaoESP, 3000);
@@ -285,7 +397,7 @@ async function exportarRelatorioCSV() {
             return;
         }
 
-  
+
         let csvContent = "data:text/csv;charset=utf-8,ID,Dispositivo,BPM,SpO2,DataHora\n";
 
         dados.forEach(row => {
@@ -297,7 +409,7 @@ async function exportarRelatorioCSV() {
         link.setAttribute("href", encodedUri);
         link.setAttribute("download", `relatorio_bioiot_${tipo}.csv`);
         document.body.appendChild(link);
-        
+
         link.click();
         document.body.removeChild(link);
 

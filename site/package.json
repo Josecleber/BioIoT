@@ -4,8 +4,9 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node algoritmos/teste_ordenacao.js && node algoritmos/teste_validacao.js && node algoritmos/teste_registros.js && node algoritmos/teste_modulo_registros.js",
+    "test:complexidade": "node algoritmos/comparacao_complexidade.js && node algoritmos/teste_desempenho.js && node algoritmos/analise_recursao.js && node algoritmos/analise_memoria.js && node algoritmos/analise_intratabilidade.js && node algoritmos/analise_precisao.js"
   },
   "keywords": [],
   "author": "",

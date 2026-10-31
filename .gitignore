@@ -12,3 +12,4 @@
 .env
 *.log
 .DS_Store
+site/public/app.backup.js
