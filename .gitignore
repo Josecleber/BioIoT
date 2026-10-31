@@ -13,4 +13,7 @@
 *.log
 .DS_Store
 site/public/app.backup.js
+<<<<<<< HEAD
 site/public/app.backup.js
+=======
+>>>>>>> upstream/main
