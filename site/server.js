@@ -37,6 +37,66 @@ db.serialize(() => {
 let ultimaConexaoESP = null;
 let estadosUI = {};
 
+// Métricas reais do processo Node.js que executa o BioIoT
+const os = require('os');
+
+let cpuAnterior = process.cpuUsage();
+let instanteAnterior = process.hrtime.bigint();
+
+app.get('/api/desempenho', (req, res) => {
+    const agora = process.hrtime.bigint();
+    const cpuAtual = process.cpuUsage();
+
+    const tempoDecorridoUs = Number(agora - instanteAnterior) / 1000;
+
+    const cpuConsumidoUs =
+        (cpuAtual.user - cpuAnterior.user) +
+        (cpuAtual.system - cpuAnterior.system);
+
+    // Percentual equivalente a um núcleo de CPU.
+    const cpuPercentual = tempoDecorridoUs > 0
+        ? (cpuConsumidoUs / tempoDecorridoUs) * 100
+        : 0;
+
+    cpuAnterior = cpuAtual;
+    instanteAnterior = agora;
+
+    const memoria = process.memoryUsage();
+
+    res.json({
+        timestamp: new Date().toISOString(),
+
+        origem: 'Processo Node.js no container Docker',
+
+        cpu: {
+            percentual: Number(cpuPercentual.toFixed(2)),
+            unidade: 'percentual de um nucleo'
+        },
+
+        memoria: {
+            rssMB: Number((memoria.rss / 1024 / 1024).toFixed(2)),
+            heapUsadoMB: Number((memoria.heapUsed / 1024 / 1024).toFixed(2)),
+            heapTotalMB: Number((memoria.heapTotal / 1024 / 1024).toFixed(2))
+        },
+
+        sistema: {
+            uptimeSegundos: Math.floor(process.uptime()),
+            nucleosVisiveis: os.cpus().length,
+            plataforma: process.platform,
+            arquitetura: process.arch
+        },
+
+        esp32: {
+            online: ultimaConexaoESP !== null &&
+                Date.now() - ultimaConexaoESP < 10000,
+
+            ultimaComunicacaoSegundos: ultimaConexaoESP === null
+                ? null
+                : Math.floor((Date.now() - ultimaConexaoESP) / 1000)
+        }
+    });
+});
+
 // Recebe periodicamente o sinal de vida do ESP32
 app.post('/api/heartbeat', (req, res) => {
     const { dispositivo } = req.body;

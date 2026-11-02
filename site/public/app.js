@@ -10,6 +10,7 @@ let realtimeChart = null;
 let performanceChart = null;
 let ultimoIdPlotado = null;
 let graficoEmPausa = false;
+let memoryChart = null;
 
 function marcarInterrupcaoGrafico() {
     if (!realtimeChart || graficoEmPausa) return;
@@ -280,20 +281,6 @@ async function atualizarDadosDashboard() {
             realtimeChart.update();
         }
 
-        if (performanceChart) {
-            const cpuSimulado = (12 + Math.random() * 4).toFixed(1);
-            document.getElementById('cpuUsage').textContent = cpuSimulado;
-
-            if (performanceChart.data.labels.length > 10) {
-                performanceChart.data.labels.shift();
-                performanceChart.data.datasets[0].data.shift();
-            }
-
-            performanceChart.data.labels.push(agora);
-            performanceChart.data.datasets[0].data.push(cpuSimulado);
-            performanceChart.update();
-        }
-
     } catch (err) {
         console.error("Erro ao buscar dados do dashboard:", err);
     }
@@ -340,6 +327,175 @@ function inicializarGraficoSaude() {
     });
 }
 
+// Atualiza indicadores usando medições reais do servidor
+async function atualizarDesempenho() {
+    try {
+        const resposta = await fetch('/api/desempenho', {
+            cache: 'no-store'
+        });
+
+        if (!resposta.ok) {
+            throw new Error('Falha ao consultar desempenho');
+        }
+
+        const dados = await resposta.json();
+
+
+        // Memória real do processo Node.js
+        const elementoRSS = document.getElementById('memoryRSS');
+        if (elementoRSS) {
+            elementoRSS.textContent = dados.memoria.rssMB.toFixed(2);
+        }
+
+        const elementoHeap = document.getElementById('memoryHeap');
+        if (elementoHeap) {
+            elementoHeap.textContent = dados.memoria.heapUsadoMB.toFixed(2);
+        }
+
+
+        // Histórico real da memória do processo Node.js
+        if (memoryChart) {
+            const horarioMemoria = new Date(dados.timestamp)
+                .toLocaleTimeString('pt-BR');
+
+            memoryChart.data.labels.push(horarioMemoria);
+            memoryChart.data.datasets[0].data.push(dados.memoria.rssMB);
+            memoryChart.data.datasets[1].data.push(dados.memoria.heapUsadoMB);
+
+            // Últimas 60 amostras: aproximadamente 3 minutos
+            if (memoryChart.data.labels.length > 60) {
+                memoryChart.data.labels.shift();
+
+                memoryChart.data.datasets.forEach(dataset => {
+                    dataset.data.shift();
+                });
+            }
+
+            memoryChart.update('none');
+        }
+
+        // Estado real da última comunicação com o ESP32
+        const elementoESP = document.getElementById('espStatusPerformance');
+        const elementoContato = document.getElementById('espLastContact');
+
+        if (elementoESP) {
+            elementoESP.textContent = dados.esp32.online ? 'ONLINE' : 'OFFLINE';
+            elementoESP.style.color = dados.esp32.online
+                ? 'var(--accent-green)'
+                : 'var(--accent-red)';
+        }
+
+        if (elementoContato) {
+            const segundos = dados.esp32.ultimaComunicacaoSegundos;
+
+            elementoContato.textContent = segundos === null
+                ? 'Nenhuma comunicação recebida nesta execução'
+                : `Última comunicação há ${segundos} segundo(s)`;
+        }
+
+        // CPU real do processo Node.js
+        const cpu = dados.cpu.percentual;
+
+        const elementoCPU = document.getElementById('cpuUsage');
+        if (elementoCPU) {
+            elementoCPU.textContent = cpu.toFixed(2);
+        }
+
+        // Tempo real de atividade do servidor
+        const segundos = dados.sistema.uptimeSegundos;
+
+        const horas = Math.floor(segundos / 3600);
+        const minutos = Math.floor((segundos % 3600) / 60);
+        const segundosRestantes = segundos % 60;
+
+        const formatar = valor => String(valor).padStart(2, '0');
+
+        const uptimeFormatado =
+            `${formatar(horas)}:${formatar(minutos)}:${formatar(segundosRestantes)}`;
+
+        const elementoUptime = document.getElementById('uptimeValue');
+        if (elementoUptime) {
+            elementoUptime.textContent = uptimeFormatado;
+        }
+
+        // Histórico gráfico da CPU real
+        if (performanceChart) {
+            const horario = new Date(dados.timestamp)
+                .toLocaleTimeString('pt-BR');
+
+            performanceChart.data.labels.push(horario);
+            performanceChart.data.datasets[0].data.push(cpu);
+
+            // Mantém as últimas 30 medições
+            if (performanceChart.data.labels.length > 30) {
+                performanceChart.data.labels.shift();
+                performanceChart.data.datasets[0].data.shift();
+            }
+
+            performanceChart.update('none');
+        }
+
+    } catch (erro) {
+        console.error('Erro ao atualizar desempenho:', erro);
+
+        const elementoCPU = document.getElementById('cpuUsage');
+        if (elementoCPU) {
+            elementoCPU.textContent = '--';
+        }
+    }
+}
+
+
+function inicializarGraficoMemoria() {
+    const canvas = document.getElementById('memoryChart');
+    if (!canvas) return;
+
+    memoryChart = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: 'Memória RSS (MiB)',
+                    data: [],
+                    borderColor: '#38bdf8',
+                    backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                    tension: 0.3,
+                    fill: true,
+                    pointRadius: 2
+                },
+                {
+                    label: 'Heap JavaScript (MiB)',
+                    data: [],
+                    borderColor: '#22c55e',
+                    backgroundColor: 'rgba(34, 197, 94, 0.05)',
+                    tension: 0.3,
+                    fill: false,
+                    pointRadius: 2
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Memória (MiB)'
+                    },
+                    grid: { color: '#334155' }
+                },
+                x: {
+                    grid: { color: '#334155' }
+                }
+            }
+        }
+    });
+}
+
 function inicializarGraficoPerformance() {
     const ctx = document.getElementById('performanceChart');
     if (!ctx) return;
@@ -374,12 +530,17 @@ document.addEventListener('DOMContentLoaded', () => {
     inicializarGraficoSaude();
     inicializarGraficoPerformance();
     inicializarGraficoAlgoritmos();
+    inicializarGraficoMemoria();
 
     carregarPacientes();
 
     setInterval(verificarStatusConexaoESP, 3000);
     setInterval(atualizarDadosDashboard, 2000);
+
+    atualizarDesempenho();
+    setInterval(atualizarDesempenho, 3000);
 });
+
 async function exportarRelatorioCSV() {
     try {
         const tipo = document.getElementById('tipoRelatorio').value;
@@ -416,5 +577,95 @@ async function exportarRelatorioCSV() {
     } catch (err) {
         console.error("Erro ao exportar CSV:", err);
         alert("Erro ao gerar o relatório CSV.");
+    }
+}
+
+
+function calcularConsumoEnergetico() {
+    const tensao = Number(document.getElementById('energiaTensao').value);
+    const corrente = Number(document.getElementById('energiaCorrente').value);
+    const horas = Number(document.getElementById('energiaHoras').value);
+    const campoTarifa = document.getElementById('energiaTarifa');
+    const resultado = document.getElementById('resultadoConsumoEnergetico');
+
+    const tarifa = Number(campoTarifa.value);
+
+    if (
+        !campoTarifa.value.trim() ||
+        !Number.isFinite(tensao) || tensao <= 0 ||
+        !Number.isFinite(corrente) || corrente <= 0 ||
+        !Number.isFinite(horas) || horas <= 0 ||
+        !Number.isFinite(tarifa) || tarifa < 0
+    ) {
+        resultado.textContent =
+            'Informe valores válidos para tensão, corrente, horas e tarifa.';
+        return;
+    }
+
+    const potenciaW = tensao * (corrente / 1000);
+    const consumoKWh = (potenciaW * horas) / 1000;
+    const custo = consumoKWh * tarifa;
+
+    const custoHora = (potenciaW / 1000) * tarifa;
+    const custoDia = custoHora * 24;
+    const custoMes = custoDia * 30;
+
+    const numero = valor => valor.toLocaleString('pt-BR', {
+        minimumFractionDigits: 4,
+        maximumFractionDigits: 6
+    });
+
+    const moeda = valor => valor.toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+        minimumFractionDigits: 4,
+        maximumFractionDigits: 6
+    });
+
+    resultado.innerHTML = `
+        <h3 style="color:var(--accent-blue); margin-bottom:1rem;">
+            Resultado da estimativa energética
+        </h3>
+
+        <div class="grid-cards">
+            <div class="card">
+                <div class="card-header">POTÊNCIA ESTIMADA</div>
+                <h2>${numero(potenciaW)} W</h2>
+            </div>
+
+            <div class="card">
+                <div class="card-header">CONSUMO NO PERÍODO</div>
+                <h2>${numero(consumoKWh)} kWh</h2>
+            </div>
+
+            <div class="card">
+                <div class="card-header">CUSTO NO PERÍODO</div>
+                <h2>${moeda(custo)}</h2>
+            </div>
+        </div>
+
+        <p style="margin-top:1rem;">
+            <strong>Custo por hora:</strong> ${moeda(custoHora)}
+        </p>
+        <p>
+            <strong>Custo por dia (24 h):</strong> ${moeda(custoDia)}
+        </p>
+        <p>
+            <strong>Custo por mês (30 dias):</strong> ${moeda(custoMes)}
+        </p>
+
+        <p style="margin-top:1rem; font-size:0.85rem;">
+            Cálculo: potência = tensão × corrente.
+            Consumo = potência × tempo ÷ 1000.
+            Custo = consumo × tarifa.
+            Os resultados consideram potência constante e não representam
+            uma medição elétrica do dispositivo.
+        </p>
+    `;
+
+    const cardCusto = document.getElementById('energyCost');
+
+    if (cardCusto) {
+        cardCusto.textContent = moeda(custo);
     }
 }

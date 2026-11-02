@@ -204,7 +204,7 @@
 
                     <div class="card">
                         <div class="card-header">
-                            <span>USO ESTIMADO DE CPU (ESP32)</span>
+                            <span>CPU REAL DO SERVIDOR NODE.JS</span>
                             <i data-lucide="cpu" style="color: var(--accent-yellow);"></i>
                         </div>
                         <div class="value-display">
@@ -212,32 +212,153 @@
                             <span class="unit">%</span>
                         </div>
                         <div class="status-badge status-normal">
-                            <i data-lucide="zap" style="width: 14px;"></i> Dual-Core 240MHz
+                            <i data-lucide="zap" style="width: 14px;"></i> Processo Node.js | 1 núcleo = 100%
                         </div>
                     </div>
 
                     <div class="card">
                         <div class="card-header">
-                            <span>CUSTO ENERGÉTICO ESTIMADO</span>
+                            <span>CUSTO ESTIMADO DO PERÍODO</span>
                             <i data-lucide="dollar-sign" style="color: var(--accent-green);"></i>
                         </div>
                         <div class="value-display">
                             <span class="number" id="energyCost"
-                                style="font-size: 2.2rem; color: var(--accent-green);">R$ 0,0000</span>
+                                style="font-size: 2.2rem; color: var(--accent-green);">--</span>
                         </div>
-                        <div style="font-size:0.85rem; color:var(--text-muted);">Baseado em 5V / 160mA</div>
+                        <div style="font-size:0.85rem; color:var(--text-muted);">
+                            Projeção calculada no laboratório abaixo
+                        </div>
+                    </div>
+                </div>
+
+
+                <div class="grid-cards" style="margin-top: 1.5rem;">
+                    <div class="card">
+                        <div class="card-header">
+                            <span>MEMÓRIA REAL DO NODE.JS (RSS)</span>
+                            <i data-lucide="memory-stick" style="color: var(--accent-blue);"></i>
+                        </div>
+                        <div class="value-display">
+                            <span class="number" id="memoryRSS" style="color: var(--accent-blue);">--</span>
+                            <span class="unit">MB</span>
+                        </div>
+                        <div style="font-size:0.85rem; color:var(--text-muted);">
+                            Memória residente do processo no Docker
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <span>HEAP JAVASCRIPT UTILIZADO</span>
+                            <i data-lucide="layers" style="color: var(--accent-yellow);"></i>
+                        </div>
+                        <div class="value-display">
+                            <span class="number" id="memoryHeap" style="color: var(--accent-yellow);">--</span>
+                            <span class="unit">MB</span>
+                        </div>
+                        <div style="font-size:0.85rem; color:var(--text-muted);">
+                            Memória utilizada pelos objetos JavaScript
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <span>CONEXÃO COM O ESP32</span>
+                            <i data-lucide="wifi" style="color: var(--accent-green);"></i>
+                        </div>
+                        <div class="value-display">
+                            <span class="number" id="espStatusPerformance"
+                                style="font-size:2rem; color:var(--accent-green);">--</span>
+                        </div>
+                        <div id="espLastContact" style="font-size:0.85rem; color:var(--text-muted);">
+                            Aguardando comunicação
+                        </div>
                     </div>
                 </div>
 
                 <div class="card" style="margin-top: 2rem;">
                     <div class="card-header">
-                        <span>Telemetria de Recursos em Tempo Real (CPU & Potência)</span>
+                        <span>Histórico de Utilização Real da CPU — Servidor Node.js</span>
                         <i data-lucide="activity" style="color: var(--accent-yellow);"></i>
                     </div>
                     <div class="chart-container" style="position: relative; height: 280px; width: 100%;">
                         <canvas id="performanceChart"></canvas>
                     </div>
                 </div>
+                <div class="card" style="margin-top: 1.5rem;">
+                    <div class="card-header">
+                        <span>Histórico de Memória Real — Servidor Node.js</span>
+                        <i data-lucide="memory-stick" style="color: var(--accent-blue);"></i>
+                    </div>
+
+                    <div class="chart-container" style="position: relative; height: 280px; width: 100%;">
+                        <canvas id="memoryChart"></canvas>
+                    </div>
+
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 1rem;">
+                        RSS: memória residente do processo.
+                        Heap: memória utilizada pelos objetos JavaScript.
+                        Leituras reais coletadas a cada 3 segundos.
+                    </p>
+                </div>
+
+                <!-- LABORATÓRIO DE ESTIMATIVA ENERGÉTICA -->
+                <details class="card" style="margin-top: 1.5rem;" open>
+                    <summary style="color: var(--accent-blue); font-size: 1.15rem;
+                    font-weight: bold; cursor: pointer; padding: 0.5rem 0;">
+                        Laboratório de Consumo Energético — ESP32
+                    </summary>
+
+                    <p style="color: var(--text-muted); margin: 1rem 0;">
+                        Simule o custo de funcionamento do ESP32 a partir da tensão,
+                        corrente elétrica, tempo de utilização e tarifa de energia.
+                        Os resultados são estimativas, não medições elétricas reais.
+                    </p>
+
+                    <div style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: end;">
+
+                        <div>
+                            <label for="energiaTensao">Tensão (V)</label>
+                            <input type="number" id="energiaTensao" value="5" min="0.1" step="0.1" style="display:block; padding:0.7rem; width:140px;
+                          background:#0f172a; color:white;
+                          border:1px solid var(--card-border); border-radius:6px;">
+                        </div>
+
+                        <div>
+                            <label for="energiaCorrente">Corrente estimada (mA)</label>
+                            <input type="number" id="energiaCorrente" value="160" min="0.1" step="1" style="display:block; padding:0.7rem; width:160px;
+                          background:#0f172a; color:white;
+                          border:1px solid var(--card-border); border-radius:6px;">
+                        </div>
+
+                        <div>
+                            <label for="energiaHoras">Horas de funcionamento</label>
+                            <input type="number" id="energiaHoras" value="24" min="0.1" step="0.5" style="display:block; padding:0.7rem; width:170px;
+                          background:#0f172a; color:white;
+                          border:1px solid var(--card-border); border-radius:6px;">
+                        </div>
+
+                        <div>
+                            <label for="energiaTarifa">Tarifa (R$/kWh)</label>
+                            <input type="number" id="energiaTarifa" placeholder="Informe a tarifa" min="0" step="0.01"
+                                style="display:block; padding:0.7rem; width:170px;
+                          background:#0f172a; color:white;
+                          border:1px solid var(--card-border); border-radius:6px;">
+                        </div>
+
+                        <button type="button" onclick="calcularConsumoEnergetico()" style="background:var(--accent-blue); color:#00111f;
+                       padding:0.75rem 1.2rem; border:none;
+                       border-radius:6px; font-weight:bold; cursor:pointer;">
+                            Calcular estimativa
+                        </button>
+                    </div>
+
+                    <div id="resultadoConsumoEnergetico" aria-live="polite"
+                        style="margin-top:1.5rem; color:var(--text-muted);">
+                        Preencha a tarifa para calcular o consumo energético estimado.
+                    </div>
+                </details>
+
             </div>
 
             <div id="relatorios" class="tab-content">
