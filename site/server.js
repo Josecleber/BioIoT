@@ -201,12 +201,62 @@ app.get('/api/estatisticas-comunicacao', (req, res) => {
     });
 });
 
-
 app.get('/api/pacientes', (req, res) => {
     db.all(`SELECT * FROM pacientes`, [], (err, rows) => {
         if (err) return res.status(500).json({ erro: err.message });
         res.json(rows);
     });
+});
+
+
+app.post('/api/pacientes', (req, res) => {
+    const { nome, idade, dispositivo } = req.body;
+
+    const nomeValido =
+        typeof nome === 'string' &&
+        nome.trim().length >= 2 &&
+        nome.trim().length <= 100;
+
+    const idadeNumero = Number(idade);
+    const idadeValida =
+        Number.isInteger(idadeNumero) &&
+        idadeNumero >= 0 &&
+        idadeNumero <= 120;
+
+    const dispositivoValido =
+        typeof dispositivo === 'string' &&
+        dispositivo.trim().length > 0 &&
+        dispositivo.trim().length <= 100;
+
+    if (!nomeValido || !idadeValida || !dispositivoValido) {
+        return res.status(400).json({
+            erro: 'Informe nome, idade e dispositivo válidos.'
+        });
+    }
+
+    const sql = `
+        INSERT INTO pacientes (nome, idade, dispositivo)
+        VALUES (?, ?, ?)
+    `;
+
+    db.run(
+        sql,
+        [nome.trim(), idadeNumero, dispositivo.trim()],
+        function (err) {
+            if (err) {
+                return res.status(500).json({
+                    erro: 'Não foi possível salvar o cadastro.'
+                });
+            }
+
+            res.status(201).json({
+                id: this.lastID,
+                nome: nome.trim(),
+                idade: idadeNumero,
+                dispositivo: dispositivo.trim()
+            });
+        }
+    );
 });
 
 app.post('/api/dados', (req, res) => {
