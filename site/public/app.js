@@ -38,12 +38,155 @@ function marcarInterrupcaoGrafico() {
     realtimeChart.update();
 }
 
+
+async function carregarTabelaRelatorios() {
+    const tipo = document.getElementById('tipoRelatorio').value;
+    const tabela = document.getElementById('relatoriosTableBody');
+    const titulo = document.getElementById('tituloTabelaRelatorio');
+
+    tabela.replaceChildren();
+
+    const mostrarMensagem = (mensagem) => {
+        tabela.replaceChildren();
+        const linha = tabela.insertRow();
+        const celula = linha.insertCell();
+
+        celula.colSpan = 5;
+        celula.textContent = mensagem;
+        celula.style.cssText =
+            'padding: 15px; text-align: center; color: var(--text-muted);';
+    };
+
+    mostrarMensagem('Carregando medições...');
+
+    try {
+        let leituras = [];
+
+        if (tipo === 'individual') {
+            const seletor = document.getElementById('pacienteRelatorio');
+            const pacienteId = Number(seletor?.value);
+
+            if (!Number.isSafeInteger(pacienteId) || pacienteId <= 0) {
+                titulo.textContent = 'Histórico Individual';
+                mostrarMensagem('Selecione um paciente para consultar o histórico.');
+                return;
+            }
+
+            const resposta = await fetch(
+                `/api/pacientes/${pacienteId}/historico`
+            );
+
+            if (!resposta.ok) {
+                throw new Error('Não foi possível consultar o paciente.');
+            }
+
+            const resultado = await resposta.json();
+            leituras = resultado.leituras;
+
+            titulo.textContent =
+                `Histórico Individual — ${resultado.paciente.nome}`;
+
+        } else {
+            titulo.textContent = 'Histórico Geral — Últimas 100 medições';
+
+            const resposta = await fetch('/api/relatorios/geral');
+
+            if (!resposta.ok) {
+                throw new Error('Não foi possível consultar o histórico geral.');
+            }
+
+            leituras = await resposta.json();
+        }
+
+        tabela.replaceChildren();
+
+        if (!Array.isArray(leituras) || leituras.length === 0) {
+            mostrarMensagem('Nenhuma medição encontrada.');
+            return;
+        }
+
+        leituras.forEach(leitura => {
+            const linha = tabela.insertRow();
+
+            const data = new Date(
+                leitura.timestamp.replace(' ', 'T') + 'Z'
+            );
+
+            const valores = [
+                leitura.id,
+                leitura.dispositivo,
+                leitura.bpm,
+                leitura.spo2,
+                data.toLocaleString('pt-BR')
+            ];
+
+            valores.forEach(valor => {
+                const celula = linha.insertCell();
+                celula.textContent = valor;
+                celula.style.cssText =
+                    'padding: 10px; border-bottom: 1px solid var(--card-border);';
+            });
+        });
+
+    } catch (erro) {
+        console.error('Erro ao carregar relatórios:', erro);
+        mostrarMensagem('Erro ao consultar as medições.');
+    }
+}
+
+function mudarTipoRelatorio() {
+    const tipo = document.getElementById('tipoRelatorio').value;
+    const campoPaciente = document.getElementById('campoPacienteRelatorio');
+
+    if (campoPaciente) {
+        campoPaciente.style.display =
+            tipo === 'individual' ? 'block' : 'none';
+    }
+
+    carregarTabelaRelatorios();
+}
+
+async function carregarPacientesRelatorio() {
+    try {
+        const resposta = await fetch('/api/pacientes');
+
+        if (!resposta.ok) {
+            throw new Error('Falha ao carregar pacientes.');
+        }
+
+        const pacientes = await resposta.json();
+        const seletor = document.getElementById('pacienteRelatorio');
+
+        seletor.replaceChildren();
+
+        const opcaoInicial = document.createElement('option');
+        opcaoInicial.value = '';
+        opcaoInicial.textContent = 'Selecione um paciente';
+        seletor.appendChild(opcaoInicial);
+
+        pacientes.forEach(paciente => {
+            const opcao = document.createElement('option');
+            opcao.value = paciente.id;
+            opcao.textContent = `${paciente.nome} — ${paciente.idade} anos`;
+            seletor.appendChild(opcao);
+        });
+
+    } catch (erro) {
+        console.error('Erro ao carregar pacientes do relatório:', erro);
+    }
+}
+
 function switchTab(tabId, element) {
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
 
     document.getElementById(tabId).classList.add('active');
     element.classList.add('active');
+    if (tabId === 'relatorios') {
+        carregarPacientesRelatorio().then(() => {
+            mudarTipoRelatorio();
+        });
+    }
 }
 
 async function verificarStatusConexaoESP() {
@@ -87,20 +230,67 @@ async function carregarPacientes() {
             return;
         }
 
+
         pacientes.forEach(p => {
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid var(--card-border)';
-            tr.innerHTML = `
-                <td style="padding: 10px;">${p.nome}</td>
-                <td style="padding: 10px;">${p.idade}</td>
-                <td style="padding: 10px;">${p.dispositivo}</td>
-                <td style="padding: 10px; text-align: right;">
-                    <button onclick="selecionarPacienteParaMonitorar(${p.id}, '${p.nome}', ${p.idade}, '${p.dispositivo}')" style="background: var(--accent-blue); color: #fff; border: none; padding: 0.4rem 0.8rem; border-radius: 4px; cursor: pointer; margin-right: 5px;">Monitorar</button>
-                    <button onclick="excluirPaciente(${p.id})" style="background: var(--accent-red); color: #fff; border: none; padding: 0.4rem 0.8rem; border-radius: 4px; cursor: pointer;">Excluir</button>
-                </td>
-            `;
+
+            const criarCelula = (valor) => {
+                const td = document.createElement('td');
+                td.style.padding = '10px';
+                td.textContent = valor;
+                return td;
+            };
+
+            tr.appendChild(criarCelula(p.nome));
+            tr.appendChild(criarCelula(p.idade));
+            tr.appendChild(criarCelula(p.dispositivo));
+
+            const acoes = document.createElement('td');
+            acoes.style.padding = '10px';
+            acoes.style.textAlign = 'right';
+
+            const criarBotao = (texto, cor, acao) => {
+                const botao = document.createElement('button');
+                botao.type = 'button';
+                botao.textContent = texto;
+                botao.style.cssText = `
+            background: ${cor};
+            color: #fff;
+            border: none;
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 3px;
+        `;
+                botao.addEventListener('click', acao);
+                return botao;
+            };
+
+            acoes.appendChild(
+                criarBotao('Monitorar', 'var(--accent-blue)', () => {
+                    selecionarPacienteParaMonitorar(
+                        p.id, p.nome, p.idade, p.dispositivo
+                    );
+                })
+            );
+
+            acoes.appendChild(
+                criarBotao('Ver histórico', 'var(--accent-green)', () => {
+                    visualizarHistoricoPaciente(p.id);
+                })
+            );
+
+            acoes.appendChild(
+                criarBotao('Excluir', 'var(--accent-red)', () => {
+                    excluirPaciente(p.id);
+                })
+            );
+
+            tr.appendChild(acoes);
             tbody.appendChild(tr);
         });
+
     } catch (err) {
         console.error("Erro ao carregar pacientes:", err);
     }
@@ -139,6 +329,78 @@ async function excluirPaciente(id) {
     }
 }
 
+
+async function visualizarHistoricoPaciente(pacienteId) {
+    try {
+        const resposta = await fetch(
+            `/api/pacientes/${encodeURIComponent(pacienteId)}/historico`
+        );
+
+        if (!resposta.ok) {
+            throw new Error('Não foi possível consultar o histórico.');
+        }
+
+        const dados = await resposta.json();
+
+        const { paciente, resumo, leituras } = dados;
+
+        document.getElementById('historicoPacienteNome').textContent =
+            `${paciente.nome} — ${paciente.idade} anos`;
+
+        document.getElementById('historicoTotal').textContent =
+            resumo.total;
+
+        document.getElementById('historicoMediaBpm').textContent =
+            resumo.mediaBpm == null
+                ? '--'
+                : Number(resumo.mediaBpm).toFixed(2).replace('.', ',');
+
+        document.getElementById('historicoMediaSpo2').textContent =
+            resumo.mediaSpo2 == null
+                ? '--'
+                : Number(resumo.mediaSpo2).toFixed(2).replace('.', ',') + '%';
+
+        const tabela = document.getElementById('historicoPacienteTabela');
+        tabela.replaceChildren();
+
+        if (leituras.length === 0) {
+            const linha = tabela.insertRow();
+            const celula = linha.insertCell();
+            celula.colSpan = 4;
+            celula.textContent = 'Nenhuma medição registrada para este paciente.';
+            celula.style.padding = '16px';
+        } else {
+            leituras.forEach(leitura => {
+                const linha = tabela.insertRow();
+
+                // Timestamp do SQLite está em UTC.
+                const data = new Date(leitura.timestamp.replace(' ', 'T') + 'Z');
+
+                const valores = [
+                    data.toLocaleString('pt-BR'),
+                    leitura.bpm,
+                    leitura.spo2 + '%',
+                    leitura.dispositivo
+                ];
+
+                valores.forEach(valor => {
+                    const celula = linha.insertCell();
+                    celula.textContent = valor;
+                    celula.style.padding = '10px';
+                    celula.style.borderBottom =
+                        '1px solid var(--card-border)';
+                });
+            });
+        }
+
+        document.getElementById('historicoPacienteCard').style.display =
+            'block';
+
+    } catch (erro) {
+        console.error('Erro ao carregar histórico:', erro);
+        alert(erro.message);
+    }
+}
 
 async function selecionarPacienteParaMonitorar(id, nome, idade, dispositivo) {
     try {
@@ -739,45 +1001,100 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(atualizarDesempenho, 3000);
 });
 
+
 async function exportarRelatorioCSV() {
     try {
         const tipo = document.getElementById('tipoRelatorio').value;
-        let url = '/api/relatorios/geral';
+        let dados = [];
+        let nomeArquivo = 'relatorio_bioiot_geral.csv';
 
-        if (tipo === 'individual' && pacienteAtivo.dispositivo) {
-            url = `/api/relatorios/individual/${pacienteAtivo.dispositivo}`;
+
+        if (tipo === 'individual') {
+            const seletor = document.getElementById('pacienteRelatorio');
+            const pacienteId = Number(seletor?.value);
+
+            if (!Number.isSafeInteger(pacienteId) || pacienteId <= 0) {
+                alert('Selecione um paciente para exportar o relatório individual.');
+                return;
+            }
+
+            const resposta = await fetch(
+                `/api/pacientes/${encodeURIComponent(pacienteId)}/historico`
+            );
+
+            if (!resposta.ok) {
+                throw new Error('Falha ao consultar histórico do paciente.');
+            }
+
+            const resultado = await resposta.json();
+            dados = resultado.leituras;
+            nomeArquivo = `relatorio_bioiot_paciente_${pacienteId}.csv`;
+
+        } else {
+            const resposta = await fetch('/api/relatorios/geral');
+
+            if (!resposta.ok) {
+                throw new Error('Falha ao consultar relatório geral.');
+            }
+
+            dados = await resposta.json();
         }
 
-        const res = await fetch(url);
-        const dados = await res.json();
-
-        if (!dados || dados.length === 0) {
-            alert("Não existem dados disponíveis para exportar neste relatório.");
+        if (!Array.isArray(dados) || dados.length === 0) {
+            alert('Não existem medições disponíveis para este relatório.');
             return;
         }
 
+        // Gera CSV com os registros consultados.
+        const linhas = [
+            ['ID', 'Dispositivo', 'BPM', 'SpO2', 'DataHora']
+        ];
 
-        let csvContent = "data:text/csv;charset=utf-8,ID,Dispositivo,BPM,SpO2,DataHora\n";
-
-        dados.forEach(row => {
-            csvContent += `${row.id},${row.dispositivo},${row.bpm},${row.spo2},${row.timestamp}\n`;
+        dados.forEach(leitura => {
+            linhas.push([
+                leitura.id,
+                leitura.dispositivo,
+                leitura.bpm,
+                leitura.spo2,
+                leitura.timestamp
+            ]);
         });
 
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `relatorio_bioiot_${tipo}.csv`);
+        // Protege os campos contra separadores, aspas e fórmulas em CSV.
+        const escaparCSV = valor => {
+            let texto = String(valor ?? '');
+
+            if (/^[\s]*[=+\-@\t\r]/.test(texto)) {
+                texto = "'" + texto;
+            }
+
+            return '"' + texto.replace(/"/g, '""') + '"';
+        };
+
+        const conteudo = '\uFEFF' +
+            linhas.map(linha => linha.map(escaparCSV).join(';')).join('\r\n');
+
+        const arquivo = new Blob([conteudo], {
+            type: 'text/csv;charset=utf-8;'
+        });
+
+        const url = URL.createObjectURL(arquivo);
+        const link = document.createElement('a');
+
+        link.href = url;
+        link.download = nomeArquivo;
+
         document.body.appendChild(link);
-
         link.click();
-        document.body.removeChild(link);
+        link.remove();
 
-    } catch (err) {
-        console.error("Erro ao exportar CSV:", err);
-        alert("Erro ao gerar o relatório CSV.");
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    } catch (erro) {
+        console.error('Erro ao exportar CSV:', erro);
+        alert('Não foi possível gerar o relatório CSV.');
     }
 }
-
 
 function calcularConsumoEnergetico() {
     const tensao = Number(document.getElementById('energiaTensao').value);

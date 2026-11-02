@@ -174,6 +174,51 @@
                         </table>
                     </div>
                 </div>
+
+                <div class="card" id="historicoPacienteCard" style="margin-top: 2rem; display: none;">
+
+                    <h3 style="margin-bottom: 0.5rem; color: var(--accent-blue);">
+                        Histórico Individual
+                    </h3>
+
+                    <p id="historicoPacienteNome" style="color: var(--text-muted); margin-bottom: 1.5rem;">
+                    </p>
+
+                    <div style="display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 1rem; margin-bottom: 1.5rem;">
+
+                        <div>
+                            <p style="color: var(--text-muted);">Total de medições</p>
+                            <h2 id="historicoTotal">--</h2>
+                        </div>
+
+                        <div>
+                            <p style="color: var(--text-muted);">BPM médio</p>
+                            <h2 id="historicoMediaBpm">--</h2>
+                        </div>
+
+                        <div>
+                            <p style="color: var(--text-muted);">SpO₂ média</p>
+                            <h2 id="historicoMediaSpo2">--</h2>
+                        </div>
+                    </div>
+
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid var(--card-border);
+                           color: var(--text-muted);">
+                                    <th style="padding: 10px;">Data e horário</th>
+                                    <th style="padding: 10px;">BPM</th>
+                                    <th style="padding: 10px;">SpO₂</th>
+                                    <th style="padding: 10px;">Dispositivo</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historicoPacienteTabela"></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
 
             <div id="alarmes" class="tab-content">
@@ -452,6 +497,21 @@
                                 <option value="individual">Relatório Individual (Paciente Ativo)</option>
                                 <option value="geral">Relatório Geral (Painel da Staff)</option>
                             </select>
+
+                            <div id="campoPacienteRelatorio" style="margin-top: 1rem;">
+                                <label for="pacienteRelatorio" style="display: block; font-size: 0.8rem;
+                  color: var(--text-muted); margin-bottom: 0.3rem;">
+                                    Paciente
+                                </label>
+
+                                <select id="pacienteRelatorio" onchange="carregarTabelaRelatorios()" style="padding: 0.6rem;
+                   background: #0f172a;
+                   border: 1px solid var(--card-border);
+                   color: #fff;
+                   border-radius: 6px;">
+                                    <option value="">Selecione um paciente</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                     <div>

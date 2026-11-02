@@ -538,13 +538,79 @@ app.get('/api/relatorios/individual/:dispositivo', (req, res) => {
     });
 });
 
+app.get('/api/pacientes/:id/historico', (req, res) => {
+    const pacienteId = Number(req.params.id);
 
-/*
- * BIOIOT - ANÁLISE DE ALGORITMOS COM DADOS REAIS
- *
- * Retorna as últimas medições registradas no SQLite.
- * Não altera nem remove informações do banco.
- */
+    if (!Number.isSafeInteger(pacienteId) || pacienteId <= 0) {
+        return res.status(400).json({
+            erro: 'ID do paciente inválido.'
+        });
+    }
+
+    db.get(
+        'SELECT id, nome, idade, dispositivo FROM pacientes WHERE id = ?',
+        [pacienteId],
+        (erroPaciente, paciente) => {
+            if (erroPaciente) {
+                return res.status(500).json({
+                    erro: 'Erro ao consultar paciente.'
+                });
+            }
+
+            if (!paciente) {
+                return res.status(404).json({
+                    erro: 'Paciente não encontrado.'
+                });
+            }
+
+            const query = `
+                SELECT
+                    COUNT(*) AS total,
+                    ROUND(AVG(bpm), 2) AS mediaBpm,
+                    ROUND(AVG(spo2), 2) AS mediaSpo2,
+                    MIN(timestamp) AS primeiraMedicao,
+                    MAX(timestamp) AS ultimaMedicao
+                FROM leituras
+                WHERE paciente_id = ?
+            `;
+
+            db.get(query, [pacienteId], (erroResumo, resumo) => {
+                if (erroResumo) {
+                    return res.status(500).json({
+                        erro: 'Erro ao calcular estatísticas.'
+                    });
+                }
+
+                const queryHistorico = `
+                    SELECT id, dispositivo, bpm, spo2, timestamp
+                    FROM leituras
+                    WHERE paciente_id = ?
+                    ORDER BY id DESC
+                    LIMIT 100
+                `;
+
+                db.all(
+                    queryHistorico,
+                    [pacienteId],
+                    (erroLeituras, leituras) => {
+                        if (erroLeituras) {
+                            return res.status(500).json({
+                                erro: 'Erro ao consultar histórico.'
+                            });
+                        }
+
+                        res.json({
+                            paciente,
+                            resumo,
+                            leituras
+                        });
+                    }
+                );
+            });
+        }
+    );
+});
+
 app.get('/api/algoritmos/medicoes', (req, res) => {
     const dispositivo = String(req.query.dispositivo || 'ESP32-BANCADA-01');
     const quantidade = Number(req.query.quantidade || 100);
