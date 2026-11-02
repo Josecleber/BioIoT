@@ -37,6 +37,16 @@ db.serialize(() => {
 let ultimaConexaoESP = null;
 let estadosUI = {};
 
+const estatisticasComunicacao = {
+    heartbeatsRecebidos: 0,
+    medicoesRecebidas: 0,
+    medicoesAceitas: 0,
+    medicoesRejeitadas: 0,
+    falhasBanco: 0,
+    intervalosHeartbeatMs: [],
+    ultimoHeartbeat: null
+};
+
 // Métricas reais do processo Node.js que executa o BioIoT
 const os = require('os');
 
@@ -107,7 +117,23 @@ app.post('/api/heartbeat', (req, res) => {
         });
     }
 
-    ultimaConexaoESP = Date.now();
+    const agoraHeartbeat = Date.now();
+
+    if (estatisticasComunicacao.ultimoHeartbeat !== null) {
+        const intervalo =
+            agoraHeartbeat - estatisticasComunicacao.ultimoHeartbeat;
+
+        estatisticasComunicacao.intervalosHeartbeatMs.push(intervalo);
+
+        // Mantém os últimos 100 intervalos
+        if (estatisticasComunicacao.intervalosHeartbeatMs.length > 100) {
+            estatisticasComunicacao.intervalosHeartbeatMs.shift();
+        }
+    }
+
+    estatisticasComunicacao.heartbeatsRecebidos++;
+    estatisticasComunicacao.ultimoHeartbeat = agoraHeartbeat;
+    ultimaConexaoESP = agoraHeartbeat;
 
     res.status(200).json({
         status: 'online',
@@ -125,6 +151,53 @@ app.get('/api/status-esp', (req, res) => {
     res.json({ online });
 });
 
+
+app.get('/api/estatisticas-comunicacao', (req, res) => {
+    const intervalos = estatisticasComunicacao.intervalosHeartbeatMs;
+
+    const mediaIntervalo = intervalos.length
+        ? intervalos.reduce((total, valor) => total + valor, 0) /
+        intervalos.length
+        : null;
+
+    const maximoIntervalo = intervalos.length
+        ? Math.max(...intervalos)
+        : null;
+
+    res.json({
+        origem: 'Requisicoes recebidas pelo servidor BioIoT',
+
+        inicioSessao: new Date(
+            Date.now() - process.uptime() * 1000
+        ).toISOString(),
+
+        heartbeats: {
+            recebidos: estatisticasComunicacao.heartbeatsRecebidos,
+            ultimoRecebimento: estatisticasComunicacao.ultimoHeartbeat
+                ? new Date(estatisticasComunicacao.ultimoHeartbeat).toISOString()
+                : null,
+            intervaloMedioMs: mediaIntervalo === null
+                ? null
+                : Number(mediaIntervalo.toFixed(2)),
+            intervaloMaximoMs: maximoIntervalo,
+            intervalosAnalisados: intervalos.length
+        },
+
+        medicoes: {
+            recebidas: estatisticasComunicacao.medicoesRecebidas,
+            aceitas: estatisticasComunicacao.medicoesAceitas,
+            rejeitadas: estatisticasComunicacao.medicoesRejeitadas,
+            falhasBanco: estatisticasComunicacao.falhasBanco
+        },
+
+        esp32: {
+            online: ultimaConexaoESP !== null &&
+                Date.now() - ultimaConexaoESP < 10000
+        }
+    });
+});
+
+
 app.get('/api/pacientes', (req, res) => {
     db.all(`SELECT * FROM pacientes`, [], (err, rows) => {
         if (err) return res.status(500).json({ erro: err.message });
@@ -134,6 +207,7 @@ app.get('/api/pacientes', (req, res) => {
 
 app.post('/api/dados', (req, res) => {
     const { dispositivo, bpm, spo2 } = req.body;
+    estatisticasComunicacao.medicoesRecebidas++;
 
     const dispositivoValido =
         typeof dispositivo === 'string' &&
@@ -153,6 +227,7 @@ app.post('/api/dados', (req, res) => {
         spo2 <= 100;
 
     if (!dispositivoValido || (!estadoEspecial && !leituraValida)) {
+        estatisticasComunicacao.medicoesRejeitadas++;
         return res.status(400).json({
             erro: 'Dispositivo, BPM ou SpO2 inválidos'
         });
@@ -162,7 +237,8 @@ app.post('/api/dados', (req, res) => {
 
     // Comando de interface
     if (bpm <= 0) {
-        estadosUI[dispositivo] = { bpm, spo2 }; // Guarda estado temporário apenas na RAM
+        estatisticasComunicacao.medicoesAceitas++;
+        estadosUI[dispositivo] = { bpm, spo2 };
         console.log(`[UI] Disp: ${dispositivo} | Estado: ${bpm === 0 ? 'Sem dedo' : 'A calcular'}`);
         return res.status(201).json({ status: 'Estado da interface atualizado' });
     }
@@ -176,10 +252,14 @@ app.post('/api/dados', (req, res) => {
 
     db.run(query, [dispositivo, bpm, spo2], function (err) {
         if (err) {
+            estatisticasComunicacao.falhasBanco++;
+
             return res.status(500).json({
                 erro: err.message
             });
         }
+
+        estatisticasComunicacao.medicoesAceitas++;
 
         // Mantém em memória a última leitura válida recebida.
         // O horário vem do servidor, não do relógio do navegador.

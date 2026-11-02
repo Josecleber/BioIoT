@@ -390,6 +390,37 @@
                     </div>
                 </details>
 
+                <!-- LABORATÓRIO DE COMUNICAÇÃO REAL DO ESP32 -->
+                <details class="card" style="margin-top: 1.5rem;">
+                    <summary style="color: var(--accent-blue);
+                    font-size: 1.15rem;
+                    font-weight: bold;
+                    cursor: pointer;
+                    padding: 0.5rem 0;">
+                        Análise de Comunicação Real — ESP32
+                    </summary>
+
+                    <p style="color: var(--text-muted); margin: 1rem 0;">
+                        Analise os heartbeats e as requisições realmente recebidas
+                        pelo servidor BioIoT durante sua execução.
+                    </p>
+
+                    <button type="button" onclick="analisarComunicacaoESP32()" style="background: var(--accent-blue);
+                   color: #00111f;
+                   padding: 0.75rem 1.2rem;
+                   border: none;
+                   border-radius: 6px;
+                   font-weight: bold;
+                   cursor: pointer;">
+                        Analisar comunicação real
+                    </button>
+
+                    <div id="resultadoComunicacaoESP32" aria-live="polite"
+                        style="margin-top: 1.5rem; color: var(--text-muted);">
+                        Clique no botão para consultar a comunicação do ESP32.
+                    </div>
+                </details>
+
             </div>
 
             <div id="relatorios" class="tab-content">

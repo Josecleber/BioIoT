@@ -792,3 +792,87 @@ function analisarEstatisticasDesempenho() {
         </p>
     `;
 }
+
+
+async function analisarComunicacaoESP32() {
+    const resultado = document.getElementById('resultadoComunicacaoESP32');
+    if (!resultado) return;
+
+    resultado.textContent = 'Consultando dados reais de comunicação...';
+
+    try {
+        const resposta = await fetch('/api/estatisticas-comunicacao', {
+            cache: 'no-store'
+        });
+
+        if (!resposta.ok) {
+            throw new Error('Erro ao consultar comunicação');
+        }
+
+        const dados = await resposta.json();
+
+        const heartbeats = dados.heartbeats;
+        const medicoes = dados.medicoes;
+
+        const formatarIntervalo = valor =>
+            valor === null
+                ? 'Sem dados'
+                : `${(valor / 1000).toLocaleString('pt-BR', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                })} s`;
+
+        const indicadores = [
+            ['HEARTBEATS RECEBIDOS', heartbeats.recebidos],
+            ['INTERVALO MÉDIO', formatarIntervalo(heartbeats.intervaloMedioMs)],
+            ['MAIOR INTERVALO', formatarIntervalo(heartbeats.intervaloMaximoMs)],
+            ['REQUISIÇÕES DE MEDIÇÃO', medicoes.recebidas],
+            ['REQUISIÇÕES ACEITAS', medicoes.aceitas],
+            ['REQUISIÇÕES REJEITADAS', medicoes.rejeitadas],
+            ['FALHAS NO BANCO SQLITE', medicoes.falhasBanco],
+            ['CONEXÃO ESP32', dados.esp32.online ? 'ONLINE' : 'OFFLINE']
+        ];
+
+        const cards = indicadores.map(([titulo, valor]) => `
+            <div class="card">
+                <div class="card-header">${titulo}</div>
+                <h2 style="color:var(--accent-blue); margin-top:0.8rem;">
+                    ${valor}
+                </h2>
+            </div>
+        `).join('');
+
+        const inicio = new Date(dados.inicioSessao)
+            .toLocaleString('pt-BR');
+
+        resultado.innerHTML = `
+            <h3 style="color:var(--accent-blue); margin-bottom:1rem;">
+                Resultados da comunicação real
+            </h3>
+
+            <div class="grid-cards">
+                ${cards}
+            </div>
+
+            <p style="margin-top:1.5rem; color:var(--text-muted);">
+                <strong>Início da sessão do servidor:</strong> ${inicio}
+                <br>
+                <strong>Intervalos analisados:</strong>
+                ${heartbeats.intervalosAnalisados}
+            </p>
+
+            <p style="margin-top:1rem; color:var(--text-muted);
+                      font-size:0.85rem;">
+                As estatísticas representam requisições que chegaram ao
+                servidor. Não contabilizam tentativas que falharam antes
+                de chegar ao BioIoT. Os contadores reiniciam quando
+                o processo Node.js é reiniciado.
+            </p>
+        `;
+
+    } catch (erro) {
+        console.error('Erro ao analisar comunicação:', erro);
+        resultado.textContent =
+            'Não foi possível consultar as estatísticas de comunicação.';
+    }
+}
