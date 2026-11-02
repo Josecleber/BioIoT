@@ -822,16 +822,20 @@ async function analisarComunicacaoESP32() {
                     maximumFractionDigits: 2
                 })} s`;
 
+
         const indicadores = [
             ['HEARTBEATS RECEBIDOS', heartbeats.recebidos],
             ['INTERVALO MÉDIO', formatarIntervalo(heartbeats.intervaloMedioMs)],
             ['MAIOR INTERVALO', formatarIntervalo(heartbeats.intervaloMaximoMs)],
-            ['REQUISIÇÕES DE MEDIÇÃO', medicoes.recebidas],
+            ['REQUISIÇÕES RECEBIDAS', medicoes.recebidas],
             ['REQUISIÇÕES ACEITAS', medicoes.aceitas],
+            ['ESTADOS DA INTERFACE', medicoes.estadosInterface],
+            ['LEITURAS GRAVADAS NO SQLITE', medicoes.leiturasGravadas],
             ['REQUISIÇÕES REJEITADAS', medicoes.rejeitadas],
             ['FALHAS NO BANCO SQLITE', medicoes.falhasBanco],
             ['CONEXÃO ESP32', dados.esp32.online ? 'ONLINE' : 'OFFLINE']
         ];
+
 
         const cards = indicadores.map(([titulo, valor]) => `
             <div class="card">

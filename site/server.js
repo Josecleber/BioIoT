@@ -42,6 +42,8 @@ const estatisticasComunicacao = {
     medicoesRecebidas: 0,
     medicoesAceitas: 0,
     medicoesRejeitadas: 0,
+    estadosInterface: 0,
+    leiturasGravadas: 0,
     falhasBanco: 0,
     intervalosHeartbeatMs: [],
     ultimoHeartbeat: null
@@ -187,6 +189,8 @@ app.get('/api/estatisticas-comunicacao', (req, res) => {
             recebidas: estatisticasComunicacao.medicoesRecebidas,
             aceitas: estatisticasComunicacao.medicoesAceitas,
             rejeitadas: estatisticasComunicacao.medicoesRejeitadas,
+            estadosInterface: estatisticasComunicacao.estadosInterface,
+            leiturasGravadas: estatisticasComunicacao.leiturasGravadas,
             falhasBanco: estatisticasComunicacao.falhasBanco
         },
 
@@ -238,6 +242,8 @@ app.post('/api/dados', (req, res) => {
     // Comando de interface
     if (bpm <= 0) {
         estatisticasComunicacao.medicoesAceitas++;
+        estatisticasComunicacao.estadosInterface++;
+
         estadosUI[dispositivo] = { bpm, spo2 };
         console.log(`[UI] Disp: ${dispositivo} | Estado: ${bpm === 0 ? 'Sem dedo' : 'A calcular'}`);
         return res.status(201).json({ status: 'Estado da interface atualizado' });
@@ -260,6 +266,7 @@ app.post('/api/dados', (req, res) => {
         }
 
         estatisticasComunicacao.medicoesAceitas++;
+        estatisticasComunicacao.leiturasGravadas++;
 
         // Mantém em memória a última leitura válida recebida.
         // O horário vem do servidor, não do relógio do navegador.
