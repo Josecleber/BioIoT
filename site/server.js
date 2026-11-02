@@ -32,6 +32,31 @@ db.serialize(() => {
         spo2 INTEGER NOT NULL,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
+    // Migração: identifica o paciente nas novas medições.
+    // Registros antigos permanecem com paciente_id = NULL.
+    db.all('PRAGMA table_info(leituras)', [], (err, colunas) => {
+        if (err) {
+            console.error('Erro ao verificar estrutura de leituras:', err.message);
+            return;
+        }
+
+        const possuiPacienteId = colunas.some(
+            coluna => coluna.name === 'paciente_id'
+        );
+
+        if (!possuiPacienteId) {
+            db.run(
+                'ALTER TABLE leituras ADD COLUMN paciente_id INTEGER REFERENCES pacientes(id)',
+                err => {
+                    if (err) {
+                        console.error('Erro na migração de pacientes:', err.message);
+                    } else {
+                        console.log('Coluna paciente_id adicionada à tabela leituras.');
+                    }
+                }
+            );
+        }
+    });
 });
 
 let ultimaConexaoESP = null;
