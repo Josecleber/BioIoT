@@ -12,6 +12,8 @@ let ultimoIdPlotado = null;
 let graficoEmPausa = false;
 let memoryChart = null;
 
+const historicoDesempenho = [];
+
 function marcarInterrupcaoGrafico() {
     if (!realtimeChart || graficoEmPausa) return;
 
@@ -340,6 +342,18 @@ async function atualizarDesempenho() {
 
         const dados = await resposta.json();
 
+        // Registra as amostras reais para análise estatística
+        historicoDesempenho.push({
+            timestamp: dados.timestamp,
+            cpu: dados.cpu.percentual,
+            rss: dados.memoria.rssMB,
+            heap: dados.memoria.heapUsadoMB
+        });
+
+        // Mantém as últimas 600 amostras, aproximadamente 30 minutos
+        if (historicoDesempenho.length > 600) {
+            historicoDesempenho.shift();
+        }
 
         // Memória real do processo Node.js
         const elementoRSS = document.getElementById('memoryRSS');
@@ -668,4 +682,113 @@ function calcularConsumoEnergetico() {
     if (cardCusto) {
         cardCusto.textContent = moeda(custo);
     }
+}
+
+
+function analisarEstatisticasDesempenho() {
+    const resultado = document.getElementById('resultadoEstatisticasDesempenho');
+
+    if (!resultado) return;
+
+    if (historicoDesempenho.length === 0) {
+        resultado.textContent =
+            'Ainda não existem amostras. Aguarde a coleta de dados.';
+        return;
+    }
+
+    const quantidade = historicoDesempenho.length;
+
+    const estatisticas = (campo) => {
+        const valores = historicoDesempenho
+            .map(amostra => amostra[campo])
+            .filter(Number.isFinite);
+
+        if (valores.length === 0) return null;
+
+        const soma = valores.reduce((total, valor) => total + valor, 0);
+
+        return {
+            media: soma / valores.length,
+            minimo: Math.min(...valores),
+            maximo: Math.max(...valores)
+        };
+    };
+
+    const cpu = estatisticas('cpu');
+    const rss = estatisticas('rss');
+    const heap = estatisticas('heap');
+
+    if (!cpu || !rss || !heap) {
+        resultado.textContent = 'Não foi possível analisar as amostras.';
+        return;
+    }
+
+    const inicio = new Date(historicoDesempenho[0].timestamp);
+    const fim = new Date(historicoDesempenho[quantidade - 1].timestamp);
+
+    const formatar = valor => valor.toLocaleString('pt-BR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+
+    resultado.innerHTML = `
+        <h3 style="color:var(--accent-blue); margin-bottom:1rem;">
+            Resultados da análise estatística
+        </h3>
+
+        <div class="grid-cards">
+            <div class="card">
+                <div class="card-header">CPU MÉDIA</div>
+                <h2>${formatar(cpu.media)}%</h2>
+                <p>Percentual de um núcleo de CPU.</p>
+            </div>
+
+            <div class="card">
+                <div class="card-header">CPU MÁXIMA</div>
+                <h2>${formatar(cpu.maximo)}%</h2>
+                <p>Maior valor observado na sessão.</p>
+            </div>
+
+            <div class="card">
+                <div class="card-header">MEMÓRIA RSS MÉDIA</div>
+                <h2>${formatar(rss.media)} MiB</h2>
+                <p>Média da memória residente.</p>
+            </div>
+
+            <div class="card">
+                <div class="card-header">PICO DE MEMÓRIA RSS</div>
+                <h2>${formatar(rss.maximo)} MiB</h2>
+                <p>Maior consumo observado.</p>
+            </div>
+
+            <div class="card">
+                <div class="card-header">PICO DO HEAP JAVASCRIPT</div>
+                <h2>${formatar(heap.maximo)} MiB</h2>
+                <p>Maior utilização observada do heap.</p>
+            </div>
+
+            <div class="card">
+                <div class="card-header">AMOSTRAS ANALISADAS</div>
+                <h2>${quantidade}</h2>
+                <p>Amostras reais coletadas da API.</p>
+            </div>
+        </div>
+
+        <p style="margin-top:1.5rem; color:var(--text-muted);">
+            <strong>Início:</strong> ${inicio.toLocaleString('pt-BR')}
+            <br>
+            <strong>Fim:</strong> ${fim.toLocaleString('pt-BR')}
+            <br>
+            <strong>Período observado:</strong>
+            ${Math.max(0, Math.round((fim - inicio) / 1000))} segundos.
+        </p>
+
+        <p style="margin-top:1rem; color:var(--text-muted); font-size:0.85rem;">
+            Estatísticas calculadas com amostras reais do processo Node.js,
+            executado no Docker. Não representam o consumo total do
+            computador ou do ESP32.
+            A análise utiliza até as últimas 600 amostras disponíveis
+            nesta página.
+        </p>
+    `;
 }

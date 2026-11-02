@@ -359,6 +359,37 @@
                     </div>
                 </details>
 
+                <!-- LABORATÓRIO DE ESTATÍSTICAS REAIS -->
+                <details class="card" style="margin-top: 1.5rem;">
+                    <summary style="color: var(--accent-blue);
+                    font-size: 1.15rem;
+                    font-weight: bold;
+                    cursor: pointer;
+                    padding: 0.5rem 0;">
+                        Análise Estatística do Desempenho Real
+                    </summary>
+
+                    <p style="color: var(--text-muted); margin: 1rem 0;">
+                        Calcule médias e picos reais de CPU e memória do servidor
+                        BioIoT com as medições coletadas durante esta sessão.
+                    </p>
+
+                    <button type="button" onclick="analisarEstatisticasDesempenho()" style="background: var(--accent-blue);
+                   color: #00111f;
+                   padding: 0.75rem 1.2rem;
+                   border: none;
+                   border-radius: 6px;
+                   font-weight: bold;
+                   cursor: pointer;">
+                        Analisar desempenho real
+                    </button>
+
+                    <div id="resultadoEstatisticasDesempenho" aria-live="polite"
+                        style="margin-top: 1.5rem; color: var(--text-muted);">
+                        Clique no botão para analisar as medições reais coletadas.
+                    </div>
+                </details>
+
             </div>
 
             <div id="relatorios" class="tab-content">
