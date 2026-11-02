@@ -62,6 +62,10 @@ db.serialize(() => {
 let ultimaConexaoESP = null;
 let estadosUI = {};
 
+const pacientesEmMonitoramento = new Map();
+
+const sensoresComDedoRemovido = new Set();
+
 const estatisticasComunicacao = {
     heartbeatsRecebidos: 0,
     medicoesRecebidas: 0,
@@ -226,6 +230,82 @@ app.get('/api/estatisticas-comunicacao', (req, res) => {
     });
 });
 
+// Inicia o monitoramento de um paciente cadastrado.
+app.post('/api/monitoramento/iniciar', (req, res) => {
+    const pacienteId = Number(req.body?.pacienteId);
+
+    if (!Number.isSafeInteger(pacienteId) || pacienteId <= 0) {
+        return res.status(400).json({
+            erro: 'ID do paciente inválido.'
+        });
+    }
+
+    db.get(
+        'SELECT id, nome, idade, dispositivo FROM pacientes WHERE id = ?',
+        [pacienteId],
+        (err, paciente) => {
+            if (err) {
+                return res.status(500).json({
+                    erro: 'Erro ao consultar paciente.'
+                });
+            }
+
+            if (!paciente) {
+                return res.status(404).json({
+                    erro: 'Paciente não encontrado.'
+                });
+            }
+
+            if (!sensoresComDedoRemovido.has(paciente.dispositivo)) {
+                return res.status(409).json({
+                    erro: 'Retire o dedo do sensor e aguarde a confirmação antes de iniciar o monitoramento.'
+                });
+            }
+
+            pacientesEmMonitoramento.set(paciente.dispositivo, paciente.id);
+
+            // Impede reutilizar uma leitura anterior como leitura atual.
+            delete estadosUI[paciente.dispositivo];
+
+            res.json({
+                status: 'monitoramento_iniciado',
+                paciente
+            });
+        }
+    );
+});
+
+// Encerra o monitoramento do dispositivo.
+app.post('/api/monitoramento/encerrar', (req, res) => {
+    const { dispositivo } = req.body || {};
+
+    if (typeof dispositivo !== 'string' || !dispositivo.trim()) {
+        return res.status(400).json({
+            erro: 'Dispositivo inválido.'
+        });
+    }
+
+    pacientesEmMonitoramento.delete(dispositivo);
+    delete estadosUI[dispositivo];
+
+    res.json({
+        status: 'monitoramento_encerrado',
+        dispositivo
+    });
+});
+
+// Consulta o paciente associado ao dispositivo.
+app.get('/api/monitoramento/:dispositivo', (req, res) => {
+    const dispositivo = req.params.dispositivo;
+    const pacienteId = pacientesEmMonitoramento.get(dispositivo);
+
+    res.json({
+        dispositivo,
+        pacienteId: pacienteId ?? null,
+        ativo: pacienteId !== undefined
+    });
+});
+
 app.get('/api/pacientes', (req, res) => {
     db.all(`SELECT * FROM pacientes`, [], (err, rows) => {
         if (err) return res.status(500).json({ erro: err.message });
@@ -314,6 +394,12 @@ app.post('/api/dados', (req, res) => {
 
     ultimaConexaoESP = Date.now();
 
+    if (bpm === 0 && spo2 === 0) {
+        sensoresComDedoRemovido.add(dispositivo);
+    } else {
+        sensoresComDedoRemovido.delete(dispositivo);
+    }
+
     // Comando de interface
     if (bpm <= 0) {
         estatisticasComunicacao.medicoesAceitas++;
@@ -324,14 +410,15 @@ app.post('/api/dados', (req, res) => {
         return res.status(201).json({ status: 'Estado da interface atualizado' });
     }
 
+    const pacienteId = pacientesEmMonitoramento.get(dispositivo) ?? null;
 
-    // Leitura real: grava no SQLite e atualiza o estado atual.
     const query = `
-        INSERT INTO leituras (dispositivo, bpm, spo2)
-        VALUES (?, ?, ?)
+        INSERT INTO leituras (dispositivo, bpm, spo2, paciente_id)
+        VALUES (?, ?, ?, ?)
     `;
 
-    db.run(query, [dispositivo, bpm, spo2], function (err) {
+    db.run(query, [dispositivo, bpm, spo2, pacienteId], function (err) {
+
         if (err) {
             estatisticasComunicacao.falhasBanco++;
 
@@ -343,10 +430,9 @@ app.post('/api/dados', (req, res) => {
         estatisticasComunicacao.medicoesAceitas++;
         estatisticasComunicacao.leiturasGravadas++;
 
-        // Mantém em memória a última leitura válida recebida.
-        // O horário vem do servidor, não do relógio do navegador.
         estadosUI[dispositivo] = {
             id: this.lastID,
+            paciente_id: pacienteId,
             bpm,
             spo2,
             recebidaEm: Date.now()
@@ -377,8 +463,31 @@ const TEMPO_MAXIMO_LEITURA_MS = 10000;
 
 app.get('/api/dados/ultimo/:dispositivo', (req, res) => {
     const { dispositivo } = req.params;
+    const pacienteIdAtivo = pacientesEmMonitoramento.get(dispositivo);
+
+    if (pacienteIdAtivo === undefined) {
+        return res.json({
+            bpm: 0,
+            spo2: 0,
+            paciente_id: null,
+            monitoramentoAtivo: false
+        });
+    }
 
     const estado = estadosUI[dispositivo];
+
+    if (
+        estado &&
+        estado.bpm > 0 &&
+        estado.paciente_id !== pacienteIdAtivo
+    ) {
+        return res.json({
+            bpm: 0,
+            spo2: 0,
+            paciente_id: pacienteIdAtivo,
+            monitoramentoAtivo: true
+        });
+    }
 
     // Nenhum estado atual recebido desde a inicialização.
     // Não reutiliza uma leitura antiga do banco SQLite.

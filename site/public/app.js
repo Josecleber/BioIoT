@@ -87,10 +87,6 @@ async function carregarPacientes() {
             return;
         }
 
-        if (!pacienteAtivo.id && pacientes.length > 0) {
-            selecionarPacienteParaMonitorar(pacientes[0].id, pacientes[0].nome, pacientes[0].idade, pacientes[0].dispositivo);
-        }
-
         pacientes.forEach(p => {
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid var(--card-border)';
@@ -143,29 +139,124 @@ async function excluirPaciente(id) {
     }
 }
 
-function selecionarPacienteParaMonitorar(id, nome, idade, dispositivo) {
-    pacienteAtivo = { id, nome, idade, dispositivo };
 
-    ultimoIdPlotado = null;
-    graficoEmPausa = false;
-
-    if (realtimeChart) {
-        realtimeChart.data.labels = [];
-        realtimeChart.data.datasets.forEach(dataset => {
-            dataset.data = [];
+async function selecionarPacienteParaMonitorar(id, nome, idade, dispositivo) {
+    try {
+        const resposta = await fetch('/api/monitoramento/iniciar', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ pacienteId: id })
         });
-        realtimeChart.update();
+
+        const resultado = await resposta.json();
+
+        if (!resposta.ok) {
+            throw new Error(resultado.erro || 'Erro ao iniciar monitoramento');
+        }
+
+        const paciente = resultado.paciente;
+
+        pacienteAtivo = {
+            id: paciente.id,
+            nome: paciente.nome,
+            idade: paciente.idade,
+            dispositivo: paciente.dispositivo
+        };
+
+        // Reinicia o histórico visual para não misturar pacientes.
+        ultimoIdPlotado = null;
+        graficoEmPausa = false;
+
+        if (realtimeChart) {
+            realtimeChart.data.labels = [];
+
+            realtimeChart.data.datasets.forEach(dataset => {
+                dataset.data = [];
+            });
+
+            realtimeChart.update();
+        }
+
+        document.getElementById('bpmValue').textContent = '--';
+        document.getElementById('spo2Value').textContent = '--';
+
+        const nomeElemento = document.getElementById('activePatientName');
+        const infoElemento = document.getElementById('activePatientInfo');
+        const dispositivoElemento = document.getElementById('activeDevice');
+
+        if (nomeElemento) nomeElemento.textContent = paciente.nome;
+        if (infoElemento) infoElemento.textContent = `(${paciente.idade} anos)`;
+        if (dispositivoElemento) dispositivoElemento.textContent = paciente.dispositivo;
+
+        atualizarDadosDashboard();
+
+        console.log('Monitoramento iniciado:', paciente);
+
+    } catch (erro) {
+        console.error('Erro ao iniciar monitoramento:', erro);
+        alert(erro.message);
+    }
+}
+
+
+async function encerrarMonitoramento() {
+    if (!pacienteAtivo.id) {
+        alert('Nenhum paciente está selecionado nesta página.');
+        return;
     }
 
-    const elemNome = document.getElementById('activePatientName');
-    const elemInfo = document.getElementById('activePatientInfo');
-    if (elemNome) elemNome.textContent = nome;
-    if (elemInfo) elemInfo.textContent = `(${idade} anos)`;
+    const dispositivo = pacienteAtivo.dispositivo;
 
-    const elemDevice = document.getElementById('activeDevice');
-    if (elemDevice) elemDevice.textContent = dispositivo;
+    try {
+        const resposta = await fetch('/api/monitoramento/encerrar', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ dispositivo })
+        });
 
-    atualizarDadosDashboard();
+        if (!resposta.ok) {
+            throw new Error('Não foi possível encerrar o monitoramento.');
+        }
+
+        pacienteAtivo = {
+            id: null,
+            nome: 'Nenhum',
+            idade: '',
+            dispositivo: 'ESP32-BANCADA-01'
+        };
+
+        ultimoIdPlotado = null;
+        graficoEmPausa = false;
+
+        if (realtimeChart) {
+            realtimeChart.data.labels = [];
+            realtimeChart.data.datasets.forEach(dataset => {
+                dataset.data = [];
+            });
+            realtimeChart.update();
+        }
+
+        document.getElementById('activePatientName').textContent = 'Nenhum';
+        document.getElementById('activePatientInfo').textContent = '( - )';
+        document.getElementById('bpmValue').textContent = '--';
+        document.getElementById('spo2Value').textContent = '--';
+
+        const condicao = document.getElementById('condicaoGeralTexto');
+        if (condicao) {
+            condicao.textContent = 'SEM MONITORAMENTO';
+            condicao.style.color = 'var(--accent-yellow)';
+        }
+
+        alert('Monitoramento encerrado com sucesso.');
+
+    } catch (erro) {
+        console.error('Erro ao encerrar monitoramento:', erro);
+        alert(erro.message);
+    }
 }
 
 async function atualizarDadosDashboard() {
@@ -540,6 +631,97 @@ function inicializarGraficoPerformance() {
     });
 }
 
+
+async function sincronizarPacienteAtivo() {
+    try {
+        const dispositivo = 'ESP32-BANCADA-01';
+
+        const resposta = await fetch(
+            `/api/monitoramento/${encodeURIComponent(dispositivo)}`
+        );
+
+        if (!resposta.ok) {
+            throw new Error('Falha ao consultar monitoramento.');
+        }
+
+        const monitoramento = await resposta.json();
+
+        let paciente = null;
+
+        if (monitoramento.ativo && monitoramento.pacienteId != null) {
+            const respostaPacientes = await fetch('/api/pacientes');
+
+            if (!respostaPacientes.ok) {
+                throw new Error('Falha ao consultar pacientes.');
+            }
+
+            const pacientes = await respostaPacientes.json();
+
+            paciente = pacientes.find(
+                p => Number(p.id) === Number(monitoramento.pacienteId)
+            );
+
+            if (!paciente) {
+                throw new Error('Paciente ativo não encontrado no cadastro.');
+            }
+        }
+
+        pacienteAtivo = paciente
+            ? {
+                id: paciente.id,
+                nome: paciente.nome,
+                idade: paciente.idade,
+                dispositivo: paciente.dispositivo
+            }
+            : {
+                id: null,
+                nome: 'Nenhum',
+                idade: '',
+                dispositivo
+            };
+
+        ultimoIdPlotado = null;
+        graficoEmPausa = false;
+
+        if (realtimeChart) {
+            realtimeChart.data.labels = [];
+            realtimeChart.data.datasets.forEach(dataset => {
+                dataset.data = [];
+            });
+            realtimeChart.update();
+        }
+
+        const nomeElemento = document.getElementById('activePatientName');
+        const infoElemento = document.getElementById('activePatientInfo');
+        const dispositivoElemento = document.getElementById('activeDevice');
+
+        if (nomeElemento) {
+            nomeElemento.textContent = pacienteAtivo.nome;
+        }
+
+        if (infoElemento) {
+            infoElemento.textContent = paciente
+                ? `(${paciente.idade} anos)`
+                : '( - )';
+        }
+
+        if (dispositivoElemento) {
+            dispositivoElemento.textContent = pacienteAtivo.dispositivo;
+        }
+
+        const bpmElemento = document.getElementById('bpmValue');
+        const spo2Elemento = document.getElementById('spo2Value');
+
+        if (bpmElemento) bpmElemento.textContent = '--';
+        if (spo2Elemento) spo2Elemento.textContent = '--';
+
+        console.log('Monitoramento sincronizado:', monitoramento);
+
+    } catch (erro) {
+        console.error('Erro ao sincronizar paciente:', erro);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     inicializarGraficoSaude();
     inicializarGraficoPerformance();
@@ -547,6 +729,8 @@ document.addEventListener('DOMContentLoaded', () => {
     inicializarGraficoMemoria();
 
     carregarPacientes();
+
+    sincronizarPacienteAtivo();
 
     setInterval(verificarStatusConexaoESP, 3000);
     setInterval(atualizarDadosDashboard, 2000);
