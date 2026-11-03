@@ -66,6 +66,12 @@ const pacientesEmMonitoramento = new Map();
 
 const sensoresComDedoRemovido = new Set();
 
+const ultimaConfirmacaoSemDedo = new Map();
+
+const ultimoEncerramentoMonitoramento = new Map();
+
+const TEMPO_MAXIMO_SENSOR_LIVRE_MS = 15000;
+
 const estatisticasComunicacao = {
     heartbeatsRecebidos: 0,
     medicoesRecebidas: 0,
@@ -256,15 +262,49 @@ app.post('/api/monitoramento/iniciar', (req, res) => {
                 });
             }
 
-            if (!sensoresComDedoRemovido.has(paciente.dispositivo)) {
+
+            const dispositivo = paciente.dispositivo;
+            const pacienteAtualId = pacientesEmMonitoramento.get(dispositivo);
+
+            // Impede trocar de paciente sem encerrar o monitoramento anterior.
+            if (pacienteAtualId !== undefined) {
+                if (pacienteAtualId === paciente.id) {
+                    return res.json({
+                        status: 'monitoramento_ja_ativo',
+                        paciente
+                    });
+                }
+
                 return res.status(409).json({
-                    erro: 'Retire o dedo do sensor e aguarde a confirmação antes de iniciar o monitoramento.'
+                    erro: 'Já existe um paciente em monitoramento neste ESP32. Encerre o monitoramento anterior antes de selecionar outra pessoa.'
                 });
             }
 
-            pacientesEmMonitoramento.set(paciente.dispositivo, paciente.id);
+            const agora = Date.now();
+            const ultimaConfirmacao = ultimaConfirmacaoSemDedo.get(dispositivo);
+            const ultimoEncerramento =
+                ultimoEncerramentoMonitoramento.get(dispositivo) ?? 0;
 
-            // Impede reutilizar uma leitura anterior como leitura atual.
+            const confirmacaoRecente =
+                ultimaConfirmacao !== undefined &&
+                agora - ultimaConfirmacao <= TEMPO_MAXIMO_SENSOR_LIVRE_MS;
+
+            const confirmacaoPosteriorAoEncerramento =
+                ultimaConfirmacao !== undefined &&
+                ultimaConfirmacao > ultimoEncerramento;
+
+            if (
+                !sensoresComDedoRemovido.has(dispositivo) ||
+                !confirmacaoRecente ||
+                !confirmacaoPosteriorAoEncerramento
+            ) {
+                return res.status(409).json({
+                    erro: 'Aguarde uma nova confirmação de dedo removido do ESP32 antes de iniciar o monitoramento.'
+                });
+            }
+
+            pacientesEmMonitoramento.set(dispositivo, paciente.id);
+
             delete estadosUI[paciente.dispositivo];
 
             res.json({
@@ -286,6 +326,8 @@ app.post('/api/monitoramento/encerrar', (req, res) => {
     }
 
     pacientesEmMonitoramento.delete(dispositivo);
+    ultimoEncerramentoMonitoramento.set(dispositivo, Date.now());
+    sensoresComDedoRemovido.delete(dispositivo);
     delete estadosUI[dispositivo];
 
     res.json({
@@ -396,6 +438,7 @@ app.post('/api/dados', (req, res) => {
 
     if (bpm === 0 && spo2 === 0) {
         sensoresComDedoRemovido.add(dispositivo);
+        ultimaConfirmacaoSemDedo.set(dispositivo, Date.now());
     } else {
         sensoresComDedoRemovido.delete(dispositivo);
     }
