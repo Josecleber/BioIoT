@@ -355,11 +355,51 @@ async function excluirPaciente(id) {
     }
 }
 
+
+let pacienteHistoricoSelecionado = null;
+
+function filtrarHistoricoPaciente() {
+    if (pacienteHistoricoSelecionado === null) {
+        alert('Selecione um paciente para consultar o histórico.');
+        return;
+    }
+
+    const inicio = document.getElementById('historicoDataInicio').value;
+    const fim = document.getElementById('historicoDataFim').value;
+
+    if (inicio && fim && inicio > fim) {
+        alert('A data inicial não pode ser posterior à final.');
+        return;
+    }
+
+    visualizarHistoricoPaciente(pacienteHistoricoSelecionado);
+}
+
+function limparFiltroHistorico() {
+    document.getElementById('historicoDataInicio').value = '';
+    document.getElementById('historicoDataFim').value = '';
+
+    if (pacienteHistoricoSelecionado !== null) {
+        visualizarHistoricoPaciente(pacienteHistoricoSelecionado);
+    }
+}
+
 async function visualizarHistoricoPaciente(pacienteId) {
+
     try {
-        const resposta = await fetch(
-            `/api/pacientes/${encodeURIComponent(pacienteId)}/historico`
-        );
+        pacienteHistoricoSelecionado = pacienteId;
+
+        const inicio = document.getElementById('historicoDataInicio').value;
+        const fim = document.getElementById('historicoDataFim').value;
+
+        const parametros = new URLSearchParams();
+
+        if (inicio) parametros.set('inicio', inicio);
+        if (fim) parametros.set('fim', fim);
+
+        const url = `/api/pacientes/${encodeURIComponent(pacienteId)}/historico?${parametros.toString()}`;
+
+        const resposta = await fetch(url);
 
         if (!resposta.ok) {
             throw new Error('Não foi possível consultar o histórico.');

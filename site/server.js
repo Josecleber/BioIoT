@@ -528,7 +528,6 @@ app.delete('/api/pacientes/:id', (req, res) => {
                 });
             }
 
-            // Preserva o histórico de pacientes com medições.
             db.get(
                 'SELECT COUNT(*) AS total FROM leituras WHERE paciente_id = ?',
                 [pacienteId],
@@ -649,6 +648,51 @@ app.get('/api/relatorios/individual/:dispositivo', (req, res) => {
 app.get('/api/pacientes/:id/historico', (req, res) => {
     const pacienteId = Number(req.params.id);
 
+    const inicio = req.query.inicio;
+    const fim = req.query.fim;
+
+    function dataValida(valor) {
+        if (typeof valor !== 'string' ||
+            !/^\d{4}-\d{2}-\d{2}$/.test(valor)) {
+            return false;
+        }
+
+        const data = new Date(valor + 'T00:00:00Z');
+
+        return !Number.isNaN(data.getTime()) &&
+            data.toISOString().slice(0, 10) === valor;
+    }
+
+    if (
+        (inicio !== undefined && !dataValida(inicio)) ||
+        (fim !== undefined && !dataValida(fim))
+    ) {
+        return res.status(400).json({
+            erro: 'Informe datas válidas no formato AAAA-MM-DD.'
+        });
+    }
+
+    if (inicio && fim && inicio > fim) {
+        return res.status(400).json({
+            erro: 'A data inicial não pode ser posterior à final.'
+        });
+    }
+
+    const condicoes = ['paciente_id = ?'];
+    const parametros = [pacienteId];
+
+    if (inicio) {
+        condicoes.push("date(timestamp, '-3 hours') >= ?");
+        parametros.push(inicio);
+    }
+
+    if (fim) {
+        condicoes.push("date(timestamp, '-3 hours') <= ?");
+        parametros.push(fim);
+    }
+
+    const filtroSQL = condicoes.join(' AND ');
+
     if (!Number.isSafeInteger(pacienteId) || pacienteId <= 0) {
         return res.status(400).json({
             erro: 'ID do paciente inválido.'
@@ -679,27 +723,28 @@ app.get('/api/pacientes/:id/historico', (req, res) => {
                     MIN(timestamp) AS primeiraMedicao,
                     MAX(timestamp) AS ultimaMedicao
                 FROM leituras
-                WHERE paciente_id = ?
+                WHERE ${filtroSQL}
             `;
 
-            db.get(query, [pacienteId], (erroResumo, resumo) => {
+            db.get(query, parametros, (erroResumo, resumo) => {
                 if (erroResumo) {
                     return res.status(500).json({
                         erro: 'Erro ao calcular estatísticas.'
                     });
                 }
 
+
                 const queryHistorico = `
-                    SELECT id, dispositivo, bpm, spo2, timestamp
-                    FROM leituras
-                    WHERE paciente_id = ?
-                    ORDER BY id DESC
-                    LIMIT 100
-                `;
+    SELECT id, dispositivo, bpm, spo2, timestamp
+    FROM leituras
+    WHERE ${filtroSQL}
+    ORDER BY id DESC
+    LIMIT 100
+`;
 
                 db.all(
                     queryHistorico,
-                    [pacienteId],
+                    parametros,
                     (erroLeituras, leituras) => {
                         if (erroLeituras) {
                             return res.status(500).json({

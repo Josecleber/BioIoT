@@ -184,6 +184,42 @@
                     <p id="historicoPacienteNome" style="color: var(--text-muted); margin-bottom: 1.5rem;">
                     </p>
 
+                    <div style="display: flex; flex-wrap: wrap; gap: 1rem;
+            align-items: end; margin-bottom: 1.5rem;">
+
+                        <div>
+                            <label for="historicoDataInicio" style="display: block; color: var(--text-muted);
+                      margin-bottom: 0.4rem;">
+                                Data inicial
+                            </label>
+                            <input type="date" id="historicoDataInicio" style="padding: 0.7rem; background: #0f172a;
+                      color: white; border: 1px solid var(--card-border);
+                      border-radius: 6px;">
+                        </div>
+
+                        <div>
+                            <label for="historicoDataFim" style="display: block; color: var(--text-muted);
+                      margin-bottom: 0.4rem;">
+                                Data final
+                            </label>
+                            <input type="date" id="historicoDataFim" style="padding: 0.7rem; background: #0f172a;
+                      color: white; border: 1px solid var(--card-border);
+                      border-radius: 6px;">
+                        </div>
+
+                        <button type="button" onclick="filtrarHistoricoPaciente()" style="background: var(--accent-blue); color: #00111f;
+                   border: none; padding: 0.75rem 1rem;
+                   border-radius: 6px; font-weight: bold; cursor: pointer;">
+                            Filtrar histórico
+                        </button>
+
+                        <button type="button" onclick="limparFiltroHistorico()" style="background: #334155; color: white;
+                   border: none; padding: 0.75rem 1rem;
+                   border-radius: 6px; cursor: pointer;">
+                            Limpar filtro
+                        </button>
+                    </div>
+
                     <div style="display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
                 gap: 1rem; margin-bottom: 1.5rem;">
