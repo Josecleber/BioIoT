@@ -450,15 +450,80 @@ app.post('/api/dados', (req, res) => {
 });
 
 app.delete('/api/pacientes/:id', (req, res) => {
-    const { id } = req.params;
-    db.run(`DELETE FROM pacientes WHERE id = ?`, id, function (err) {
-        if (err) return res.status(500).json({ erro: err.message });
-        res.json({ mensagem: 'Paciente removido com sucesso', linhasAfetadas: this.changes });
-    });
+    const pacienteId = Number(req.params.id);
+
+    if (!Number.isSafeInteger(pacienteId) || pacienteId <= 0) {
+        return res.status(400).json({
+            erro: 'ID do paciente inválido.'
+        });
+    }
+
+    db.get(
+        'SELECT id FROM pacientes WHERE id = ?',
+        [pacienteId],
+        (erro, paciente) => {
+            if (erro) {
+                return res.status(500).json({
+                    erro: 'Erro ao consultar paciente.'
+                });
+            }
+
+            if (!paciente) {
+                return res.status(404).json({
+                    erro: 'Paciente não encontrado.'
+                });
+            }
+
+            // Impede excluir quem está sendo monitorado.
+            const monitoramentoAtivo = [
+                ...pacientesEmMonitoramento.values()
+            ].some(id => id === pacienteId);
+
+            if (monitoramentoAtivo) {
+                return res.status(409).json({
+                    erro: 'Encerre o monitoramento antes de excluir este paciente.'
+                });
+            }
+
+            // Preserva o histórico de pacientes com medições.
+            db.get(
+                'SELECT COUNT(*) AS total FROM leituras WHERE paciente_id = ?',
+                [pacienteId],
+                (erroHistorico, resultado) => {
+                    if (erroHistorico) {
+                        return res.status(500).json({
+                            erro: 'Erro ao consultar histórico.'
+                        });
+                    }
+
+                    if (resultado.total > 0) {
+                        return res.status(409).json({
+                            erro: `Este paciente possui ${resultado.total} medições. A exclusão foi bloqueada para preservar o histórico.`
+                        });
+                    }
+
+                    db.run(
+                        'DELETE FROM pacientes WHERE id = ?',
+                        [pacienteId],
+                        function (erroExclusao) {
+                            if (erroExclusao) {
+                                return res.status(500).json({
+                                    erro: 'Erro ao excluir paciente.'
+                                });
+                            }
+
+                            res.json({
+                                mensagem: 'Paciente removido com sucesso.',
+                                linhasAfetadas: this.changes
+                            });
+                        }
+                    );
+                }
+            );
+        }
+    );
 });
 
-
-// Tempo máximo para considerar uma medição como atual.
 const TEMPO_MAXIMO_LEITURA_MS = 10000;
 
 app.get('/api/dados/ultimo/:dispositivo', (req, res) => {

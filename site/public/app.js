@@ -319,16 +319,41 @@ async function cadastrarPaciente(e) {
     }
 }
 
+
 async function excluirPaciente(id) {
-    if (!confirm("Tem certeza que deseja excluir este paciente?")) return;
+    const confirmar = confirm(
+        'Tem certeza que deseja excluir este paciente?'
+    );
+
+    if (!confirmar) return;
+
     try {
-        await fetch(`/api/pacientes/${id}`, { method: 'DELETE' });
-        carregarPacientes();
-    } catch (err) {
-        console.error("Erro ao excluir paciente:", err);
+        const resposta = await fetch(`/api/pacientes/${id}`, {
+            method: 'DELETE'
+        });
+
+        const resultado = await resposta.json();
+
+        if (!resposta.ok) {
+            alert(resultado.erro || 'Não foi possível excluir o paciente.');
+            return;
+        }
+
+        alert(resultado.mensagem || 'Paciente excluído com sucesso.');
+
+        // Atualiza a lista somente após exclusão confirmada.
+        await carregarPacientes();
+
+        // Atualiza também o seletor da aba Relatórios.
+        if (typeof carregarPacientesRelatorio === 'function') {
+            await carregarPacientesRelatorio();
+        }
+
+    } catch (erro) {
+        console.error('Erro ao excluir paciente:', erro);
+        alert('Falha de comunicação ao tentar excluir o paciente.');
     }
 }
-
 
 async function visualizarHistoricoPaciente(pacienteId) {
     try {
