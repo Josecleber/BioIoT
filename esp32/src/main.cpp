@@ -24,19 +24,21 @@ namespace
            static_cast<uint32_t>(millis() - reading.sampleMillis) <= config::MAX_SAMPLE_AGE_MS;
   }
 
-  // Constrói o pacote de dados no formato JSON
-  String makePayload(const ppg::Reading &reading)
+  String makePayload(const ppg::Reading &reading, const String &sessaoId)
   {
     StaticJsonDocument<256> body;
+
     body["dispositivo"] = config::DEVICE_ID;
     body["bpm"] = static_cast<int>(lroundf(reading.bpm));
     body["spo2"] = static_cast<int>(lroundf(reading.spo2));
+
+    body["sessaoId"] = sessaoId;
+
     String result;
     serializeJson(body, result);
     return result;
   }
 
-  // LOOP DA REDE
   void networkTask(void *)
   {
     String server = config::SERVER_URL;
@@ -57,7 +59,6 @@ namespace
     const uint32_t HEARTBEAT_INTERVAL_MS = 5000;
     uint32_t ultimoHeartbeat = millis() - HEARTBEAT_INTERVAL_MS;
 
-    // Controlo de estados para o Painel Web
     uint32_t ultimoTempoValido = millis();
     bool jaEnviouZeros = false;
     bool jaEnviouCalculando = false;
@@ -65,10 +66,15 @@ namespace
     const uint32_t INTERVALO_SEM_DEDO_MS = 10000;
     uint32_t ultimoEnvioSemDedo = 0;
 
+    const uint32_t INTERVALO_CONSULTA_SESSAO_MS = 3000;
+    uint32_t ultimaConsultaSessao = 0;
+
+    String sessaoMonitoramento = "";
+
     for (;;)
     {
       const uint32_t now = millis();
-      const ppg::Reading reading = ppg::latest();
+      const ppg::Reading leituraEstadoSensor = ppg::latest();
 
       if (WiFi.status() != WL_CONNECTED)
       {
@@ -122,6 +128,74 @@ namespace
         ultimoHeartbeat = millis();
       }
 
+      const bool sensorLivre =
+          leituraEstadoSensor.state == ppg::SignalState::NoFinger;
+
+      if (sensorLivre &&
+          static_cast<uint32_t>(now - ultimaConsultaSessao) >=
+              INTERVALO_CONSULTA_SESSAO_MS)
+      {
+        WiFiClient clienteSessao;
+        HTTPClient consultaSessao;
+
+        String urlSessao = config::SERVER_URL;
+        while (urlSessao.endsWith("/"))
+        {
+          urlSessao.remove(urlSessao.length() - 1);
+        }
+
+        urlSessao += "/api/monitoramento/sessao/";
+        urlSessao += config::DEVICE_ID;
+
+        consultaSessao.setConnectTimeout(config::HTTP_TIMEOUT_MS);
+        consultaSessao.setTimeout(config::HTTP_TIMEOUT_MS);
+
+        if (consultaSessao.begin(clienteSessao, urlSessao))
+        {
+          const int status = consultaSessao.GET();
+
+          if (status == 200)
+          {
+            StaticJsonDocument<256> respostaSessao;
+
+            if (deserializeJson(respostaSessao,
+                                consultaSessao.getString()) ==
+                DeserializationError::Ok)
+            {
+              String novaSessao =
+                  respostaSessao["sessaoId"] | "";
+
+              if (novaSessao != sessaoMonitoramento)
+              {
+                sessaoMonitoramento = novaSessao;
+
+                jaEnviouCalculando = false;
+                jaEnviouZeros = false;
+
+                backoff = config::SEND_INTERVAL_MS;
+                nextSend = millis() + config::SEND_INTERVAL_MS;
+
+                Serial.println(
+                    sessaoMonitoramento.length() > 0
+                        ? "[SESSAO] Nova sessao recebida do servidor"
+                        : "[SESSAO] Monitoramento encerrado");
+              }
+            }
+          }
+          else
+          {
+            Serial.printf("[SESSAO] Falha na consulta: HTTP %d\n",
+                          status);
+          }
+
+          consultaSessao.end();
+        }
+
+        ultimaConsultaSessao = millis();
+      }
+
+      const ppg::Reading reading = ppg::latest();
+
       String payloadToSend = "";
       bool isZeroPayload = false;
       bool isCalcPayload = false;
@@ -143,7 +217,7 @@ namespace
           // Envia as leituras normais de X em X segundos
           if (static_cast<int32_t>(now - nextSend) >= 0)
           {
-            payloadToSend = makePayload(reading);
+            payloadToSend = makePayload(reading, sessaoMonitoramento);
           }
         }
         else
@@ -154,7 +228,7 @@ namespace
             ppg::Reading leituraCalc = {};
             leituraCalc.bpm = -1;
             leituraCalc.spo2 = -1;
-            payloadToSend = makePayload(leituraCalc);
+            payloadToSend = makePayload(leituraCalc, sessaoMonitoramento);
             isCalcPayload = true;
           }
         }
@@ -170,7 +244,7 @@ namespace
           ppg::Reading leituraZero = {};
           leituraZero.bpm = 0;
           leituraZero.spo2 = 0;
-          payloadToSend = makePayload(leituraZero);
+          payloadToSend = makePayload(leituraZero, sessaoMonitoramento);
           isZeroPayload = true;
         }
       }
@@ -211,6 +285,16 @@ namespace
           else
           {
             Serial.printf("[ENVIO FALHOU] HTTP %d\n", status);
+            if (status == 409)
+            {
+              sessaoMonitoramento = "";
+
+              ultimaConsultaSessao =
+                  millis() - INTERVALO_CONSULTA_SESSAO_MS;
+
+              Serial.println(
+                  "[SESSAO] Identificador rejeitado. Aguardando sensor livre.");
+            }
             if (isZeroPayload)
             {
               jaEnviouZeros = false;

@@ -1,9 +1,9 @@
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
-
 const app = express();
 const PORT = process.env.PORT || 3000;
+const { randomUUID } = require('crypto');
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -63,6 +63,8 @@ let ultimaConexaoESP = null;
 let estadosUI = {};
 
 const pacientesEmMonitoramento = new Map();
+
+const sessoesEmMonitoramento = new Map();
 
 const sensoresComDedoRemovido = new Set();
 
@@ -236,7 +238,6 @@ app.get('/api/estatisticas-comunicacao', (req, res) => {
     });
 });
 
-// Inicia o monitoramento de um paciente cadastrado.
 app.post('/api/monitoramento/iniciar', (req, res) => {
     const pacienteId = Number(req.body?.pacienteId);
 
@@ -303,19 +304,23 @@ app.post('/api/monitoramento/iniciar', (req, res) => {
                 });
             }
 
-            pacientesEmMonitoramento.set(dispositivo, paciente.id);
+            const sessaoId = randomUUID();
 
-            delete estadosUI[paciente.dispositivo];
+            pacientesEmMonitoramento.set(dispositivo, paciente.id);
+            sessoesEmMonitoramento.set(dispositivo, sessaoId);
+
+            delete estadosUI[dispositivo];
 
             res.json({
                 status: 'monitoramento_iniciado',
-                paciente
+                paciente,
+                sessaoId
             });
+
         }
     );
 });
 
-// Encerra o monitoramento do dispositivo.
 app.post('/api/monitoramento/encerrar', (req, res) => {
     const { dispositivo } = req.body || {};
 
@@ -326,6 +331,7 @@ app.post('/api/monitoramento/encerrar', (req, res) => {
     }
 
     pacientesEmMonitoramento.delete(dispositivo);
+    sessoesEmMonitoramento.delete(dispositivo);
     ultimoEncerramentoMonitoramento.set(dispositivo, Date.now());
     sensoresComDedoRemovido.delete(dispositivo);
     delete estadosUI[dispositivo];
@@ -336,7 +342,6 @@ app.post('/api/monitoramento/encerrar', (req, res) => {
     });
 });
 
-// Consulta o paciente associado ao dispositivo.
 app.get('/api/monitoramento/:dispositivo', (req, res) => {
     const dispositivo = req.params.dispositivo;
     const pacienteId = pacientesEmMonitoramento.get(dispositivo);
@@ -345,6 +350,18 @@ app.get('/api/monitoramento/:dispositivo', (req, res) => {
         dispositivo,
         pacienteId: pacienteId ?? null,
         ativo: pacienteId !== undefined
+    });
+});
+
+app.get('/api/monitoramento/sessao/:dispositivo', (req, res) => {
+    const dispositivo = req.params.dispositivo;
+
+    const sessaoId = sessoesEmMonitoramento.get(dispositivo) ?? null;
+
+    res.json({
+        dispositivo,
+        sessaoId,
+        ativo: sessaoId !== null
     });
 });
 
@@ -407,7 +424,7 @@ app.post('/api/pacientes', (req, res) => {
 });
 
 app.post('/api/dados', (req, res) => {
-    const { dispositivo, bpm, spo2 } = req.body;
+    const { dispositivo, bpm, spo2, sessaoId } = req.body;
     estatisticasComunicacao.medicoesRecebidas++;
 
     const dispositivoValido =
@@ -431,6 +448,27 @@ app.post('/api/dados', (req, res) => {
         estatisticasComunicacao.medicoesRejeitadas++;
         return res.status(400).json({
             erro: 'Dispositivo, BPM ou SpO2 inválidos'
+        });
+    }
+
+    const sessaoAtiva = sessoesEmMonitoramento.get(dispositivo) ?? null;
+
+    const sessaoInformada =
+        typeof sessaoId === 'string' ? sessaoId : '';
+
+    const sessaoInvalida = sessaoAtiva
+        ? sessaoInformada !== sessaoAtiva
+        : sessaoInformada !== '';
+
+    if (sessaoInvalida) {
+        estatisticasComunicacao.medicoesRejeitadas++;
+
+        console.warn(
+            `[SESSAO REJEITADA] Dispositivo: ${dispositivo}`
+        );
+
+        return res.status(409).json({
+            erro: 'Sessão de monitoramento inválida ou encerrada.'
         });
     }
 
