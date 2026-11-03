@@ -493,6 +493,18 @@ app.post('/api/dados', (req, res) => {
 
     const pacienteId = pacientesEmMonitoramento.get(dispositivo) ?? null;
 
+    if (pacienteId === null || sessaoAtiva === null) {
+        estatisticasComunicacao.medicoesRejeitadas++;
+
+        console.warn(
+            `[MONITORAMENTO] Leitura descartada: nenhum paciente ativo para ${dispositivo}`
+        );
+
+        return res.status(409).json({
+            erro: 'Não existe monitoramento ativo para registrar esta medição.'
+        });
+    }
+
     const query = `
         INSERT INTO leituras (dispositivo, bpm, spo2, paciente_id)
         VALUES (?, ?, ?, ?)
