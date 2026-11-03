@@ -628,11 +628,70 @@ app.get('/api/dados/ultimo/:dispositivo', (req, res) => {
     res.json(estado);
 });
 
+
 app.get('/api/relatorios/geral', (req, res) => {
-    const query = `SELECT * FROM leituras ORDER BY id DESC LIMIT 100`;
-    db.all(query, [], (err, rows) => {
-        if (err) return res.status(500).json({ erro: err.message });
-        res.json(rows);
+    const { inicio, fim } = req.query;
+
+    const dataValida = valor => {
+        if (typeof valor !== 'string' ||
+            !/^\d{4}-\d{2}-\d{2}$/.test(valor)) {
+            return false;
+        }
+
+        const data = new Date(`${valor}T00:00:00Z`);
+
+        return !Number.isNaN(data.getTime()) &&
+            data.toISOString().slice(0, 10) === valor;
+    };
+
+    if (
+        (inicio !== undefined && !dataValida(inicio)) ||
+        (fim !== undefined && !dataValida(fim))
+    ) {
+        return res.status(400).json({
+            erro: 'Informe datas válidas no formato AAAA-MM-DD.'
+        });
+    }
+
+    if (inicio && fim && inicio > fim) {
+        return res.status(400).json({
+            erro: 'A data inicial não pode ser posterior à final.'
+        });
+    }
+
+    const condicoes = [];
+    const parametros = [];
+
+    if (inicio) {
+        condicoes.push("date(timestamp, '-3 hours') >= ?");
+        parametros.push(inicio);
+    }
+
+    if (fim) {
+        condicoes.push("date(timestamp, '-3 hours') <= ?");
+        parametros.push(fim);
+    }
+
+    const whereSQL = condicoes.length
+        ? `WHERE ${condicoes.join(' AND ')}`
+        : '';
+
+    const query = `
+        SELECT *
+        FROM leituras
+        ${whereSQL}
+        ORDER BY id DESC
+        LIMIT 100
+    `;
+
+    db.all(query, parametros, (erro, leituras) => {
+        if (erro) {
+            return res.status(500).json({
+                erro: 'Erro ao consultar relatório geral.'
+            });
+        }
+
+        res.json(leituras);
     });
 });
 

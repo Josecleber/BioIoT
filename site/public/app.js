@@ -43,6 +43,18 @@ async function carregarTabelaRelatorios() {
     const tipo = document.getElementById('tipoRelatorio').value;
     const tabela = document.getElementById('relatoriosTableBody');
     const titulo = document.getElementById('tituloTabelaRelatorio');
+    const inicio = document.getElementById('relatorioDataInicio').value;
+    const fim = document.getElementById('relatorioDataFim').value;
+
+    if (inicio && fim && inicio > fim) {
+        alert('A data inicial não pode ser posterior à data final.');
+        return;
+    }
+
+    const parametros = new URLSearchParams();
+
+    if (inicio) parametros.set('inicio', inicio);
+    if (fim) parametros.set('fim', fim);
 
     tabela.replaceChildren();
 
@@ -73,7 +85,7 @@ async function carregarTabelaRelatorios() {
             }
 
             const resposta = await fetch(
-                `/api/pacientes/${pacienteId}/historico`
+                `/api/pacientes/${pacienteId}/historico?${parametros.toString()}`
             );
 
             if (!resposta.ok) {
@@ -89,7 +101,9 @@ async function carregarTabelaRelatorios() {
         } else {
             titulo.textContent = 'Histórico Geral — Últimas 100 medições';
 
-            const resposta = await fetch('/api/relatorios/geral');
+            const resposta = await fetch(
+                `/api/relatorios/geral?${parametros.toString()}`
+            );
 
             if (!resposta.ok) {
                 throw new Error('Não foi possível consultar o histórico geral.');
@@ -1070,6 +1084,18 @@ document.addEventListener('DOMContentLoaded', () => {
 async function exportarRelatorioCSV() {
     try {
         const tipo = document.getElementById('tipoRelatorio').value;
+        const inicio = document.getElementById('relatorioDataInicio').value;
+        const fim = document.getElementById('relatorioDataFim').value;
+
+        if (inicio && fim && inicio > fim) {
+            alert('A data inicial não pode ser posterior à final.');
+            return;
+        }
+
+        const parametros = new URLSearchParams();
+
+        if (inicio) parametros.set('inicio', inicio);
+        if (fim) parametros.set('fim', fim);
         let dados = [];
         let nomeArquivo = 'relatorio_bioiot_geral.csv';
 
@@ -1084,7 +1110,7 @@ async function exportarRelatorioCSV() {
             }
 
             const resposta = await fetch(
-                `/api/pacientes/${encodeURIComponent(pacienteId)}/historico`
+                `/api/pacientes/${encodeURIComponent(pacienteId)}/historico?${parametros.toString()}`
             );
 
             if (!resposta.ok) {
@@ -1096,7 +1122,9 @@ async function exportarRelatorioCSV() {
             nomeArquivo = `relatorio_bioiot_paciente_${pacienteId}.csv`;
 
         } else {
-            const resposta = await fetch('/api/relatorios/geral');
+            const resposta = await fetch(
+                `/api/relatorios/geral?${parametros.toString()}`
+            );
 
             if (!resposta.ok) {
                 throw new Error('Falha ao consultar relatório geral.');

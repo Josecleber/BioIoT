@@ -548,6 +548,27 @@
                                     <option value="">Selecione um paciente</option>
                                 </select>
                             </div>
+                            <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem;">
+                                <div>
+                                    <label for="relatorioDataInicio">Data inicial</label>
+                                    <input type="date" id="relatorioDataInicio" style="display:block; padding:0.6rem; background:#0f172a;
+                      color:white; border:1px solid var(--card-border);
+                      border-radius:6px;">
+                                </div>
+
+                                <div>
+                                    <label for="relatorioDataFim">Data final</label>
+                                    <input type="date" id="relatorioDataFim" style="display:block; padding:0.6rem; background:#0f172a;
+                      color:white; border:1px solid var(--card-border);
+                      border-radius:6px;">
+                                </div>
+
+                                <button type="button" onclick="carregarTabelaRelatorios()" style="align-self:end; padding:0.7rem 1rem;
+                   background:var(--accent-blue); color:#00111f;
+                   border:0; border-radius:6px; cursor:pointer;">
+                                    Filtrar relatório
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <div>
