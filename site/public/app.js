@@ -190,12 +190,467 @@ async function carregarPacientesRelatorio() {
     }
 }
 
+
+let audioContextAlarme = null;
+let temporizadorSomAlarme = null;
+let somAlarmeAtivado = false;
+let somAlarmeSilenciado = false;
+let alertaCriticoAtivo = false;
+
+function atualizarStatusSomAlarme() {
+    const status = document.getElementById('alarmeSomStatus');
+    if (!status) return;
+
+    if (!somAlarmeAtivado) {
+        status.textContent = 'Som desativado.';
+    } else if (somAlarmeSilenciado) {
+        status.textContent = 'Alarme silenciado pelo operador.';
+    } else if (alertaCriticoAtivo) {
+        status.textContent = 'Alerta crítico confirmado — aviso sonoro ativo.';
+    } else {
+        status.textContent = 'Som ativado. Aguardando alerta crítico confirmado.';
+    }
+}
+
+function emitirBipAlarme() {
+    if (!audioContextAlarme || !somAlarmeAtivado ||
+        somAlarmeSilenciado || !alertaCriticoAtivo) {
+        return;
+    }
+
+    if (document.hidden ||
+        !document.getElementById('alarmes')?.classList.contains('active')) {
+        return;
+    }
+
+    const contexto = audioContextAlarme;
+
+    if (contexto.state !== 'running') return;
+
+    const oscilador = contexto.createOscillator();
+    const volume = contexto.createGain();
+
+    oscilador.type = 'sine';
+    oscilador.frequency.value = 850;
+
+    volume.gain.setValueAtTime(0.0001, contexto.currentTime);
+    volume.gain.exponentialRampToValueAtTime(
+        0.12, contexto.currentTime + 0.02
+    );
+    volume.gain.exponentialRampToValueAtTime(
+        0.0001, contexto.currentTime + 0.30
+    );
+
+    oscilador.connect(volume);
+    volume.connect(contexto.destination);
+
+    oscilador.start();
+    oscilador.stop(contexto.currentTime + 0.31);
+}
+
+function pararSomAlarme() {
+    if (temporizadorSomAlarme !== null) {
+        clearInterval(temporizadorSomAlarme);
+        temporizadorSomAlarme = null;
+    }
+}
+
+function atualizarAlertaSonoro(criticoConfirmado) {
+    alertaCriticoAtivo = Boolean(criticoConfirmado);
+
+    if (!alertaCriticoAtivo || !somAlarmeAtivado ||
+        somAlarmeSilenciado) {
+        pararSomAlarme();
+        atualizarStatusSomAlarme();
+        return;
+    }
+
+    if (temporizadorSomAlarme === null) {
+        emitirBipAlarme();
+        temporizadorSomAlarme = setInterval(emitirBipAlarme, 1600);
+    }
+
+    atualizarStatusSomAlarme();
+}
+
+async function ativarSomAlarmes() {
+    try {
+        if (!audioContextAlarme) {
+            const AudioContextClass =
+                window.AudioContext || window.webkitAudioContext;
+
+            if (!AudioContextClass) {
+                throw new Error('Áudio não suportado neste navegador.');
+            }
+
+            audioContextAlarme = new AudioContextClass();
+        }
+
+        await audioContextAlarme.resume();
+
+        if (audioContextAlarme.state !== 'running') {
+            throw new Error('Não foi possível ativar o áudio.');
+        }
+
+        somAlarmeAtivado = true;
+        somAlarmeSilenciado = false;
+
+        atualizarStatusSomAlarme();
+        atualizarAlertaSonoro(alertaCriticoAtivo);
+    } catch (erro) {
+        console.error('Erro ao ativar som:', erro);
+        alert('Não foi possível ativar o áudio do navegador.');
+    }
+}
+
+function silenciarSomAlarmes() {
+    somAlarmeSilenciado = true;
+    pararSomAlarme();
+    atualizarStatusSomAlarme();
+}
+
+function inicializarControlesSomAlarmes() {
+    const ativar = document.getElementById('ativarSomAlarme');
+    const silenciar = document.getElementById('silenciarSomAlarme');
+
+    if (!ativar || !silenciar) return;
+
+    ativar.disabled = false;
+    silenciar.disabled = false;
+
+    ativar.addEventListener('click', ativarSomAlarmes);
+    silenciar.addEventListener('click', silenciarSomAlarmes);
+
+    atualizarStatusSomAlarme();
+}
+
+document.addEventListener(
+    'DOMContentLoaded',
+    inicializarControlesSomAlarmes
+);
+
+const controleAlarmes = {
+    pacienteId: null,
+    ultimoId: null,
+    nivelPendente: null,
+    consecutivas: 0,
+    nivelConfirmado: null
+};
+
+function reiniciarConfirmacaoAlarmes() {
+    controleAlarmes.ultimoId = null;
+    controleAlarmes.nivelPendente = null;
+    controleAlarmes.consecutivas = 0;
+    controleAlarmes.nivelConfirmado = null;
+}
+
+function confirmarLeituraAlarme(dados, classificacao) {
+    const pacienteId = pacienteAtivo.id;
+
+    if (controleAlarmes.pacienteId !== pacienteId) {
+        reiniciarConfirmacaoAlarmes();
+        controleAlarmes.pacienteId = pacienteId;
+    }
+
+    if (!Number.isSafeInteger(dados.id) ||
+        dados.paciente_id !== pacienteId ||
+        !Number.isFinite(dados.recebidaEm)) {
+        reiniciarConfirmacaoAlarmes();
+        return null;
+    }
+
+    // Não conta novamente a mesma medição.
+    if (dados.id === controleAlarmes.ultimoId) {
+        return controleAlarmes.nivelConfirmado;
+    }
+
+    controleAlarmes.ultimoId = dados.id;
+
+    if (classificacao.nivel === 'normal') {
+        controleAlarmes.nivelPendente = null;
+        controleAlarmes.consecutivas = 0;
+        controleAlarmes.nivelConfirmado = null;
+        return null;
+    }
+
+    if (controleAlarmes.nivelPendente === classificacao.nivel) {
+        controleAlarmes.consecutivas++;
+    } else {
+        controleAlarmes.nivelPendente = classificacao.nivel;
+        controleAlarmes.consecutivas = 1;
+        controleAlarmes.nivelConfirmado = null;
+    }
+
+    if (controleAlarmes.consecutivas >= 3) {
+        controleAlarmes.nivelConfirmado = classificacao.nivel;
+    }
+
+    return controleAlarmes.nivelConfirmado;
+}
+
+function classificarLeituraAlarme(bpm, spo2) {
+    if (bpm < 50 || bpm > 120 || spo2 < 93) {
+        return {
+            nivel: 'critico',
+            titulo: 'Alerta crítico',
+            cor: 'var(--accent-red)'
+        };
+    }
+
+    if (bpm < 60 || bpm > 100 || spo2 < 96) {
+        return {
+            nivel: 'atencao',
+            titulo: 'Atenção — valores fora da faixa',
+            cor: 'var(--accent-yellow)'
+        };
+    }
+
+    return {
+        nivel: 'normal',
+        titulo: 'Medição dentro dos limites configurados',
+        cor: 'var(--accent-green)'
+    };
+}
+
+let versaoConsultaAlarmes = 0;
+
+function invalidarConsultasAlarmes() {
+    versaoConsultaAlarmes++;
+}
+
+
+async function carregarHistoricoAlarmes() {
+    const status = document.getElementById('alarmeHistoricoStatus');
+    const lista = document.getElementById('alarmeHistoricoLista');
+
+    if (!status || !lista) return;
+
+    status.textContent = 'Carregando histórico...';
+
+    try {
+        const resposta = await fetch('/api/alarmes/historico');
+
+        if (!resposta.ok) {
+            throw new Error('Falha ao consultar histórico.');
+        }
+
+        const alarmes = await resposta.json();
+
+        lista.replaceChildren();
+
+        if (!alarmes.length) {
+            status.textContent = 'Nenhum alerta registrado até o momento.';
+            return;
+        }
+
+        status.textContent =
+            `${alarmes.length} alerta(s) encontrado(s).`;
+
+        alarmes.forEach(alarme => {
+            const item = document.createElement('div');
+
+            item.style.padding = '12px';
+            item.style.marginBottom = '10px';
+            item.style.borderRadius = '8px';
+            item.style.background = 'var(--bg-main)';
+            item.style.border = '1px solid var(--border-color)';
+
+            const titulo = document.createElement('strong');
+
+            titulo.textContent =
+                `${alarme.paciente_nome || 'Paciente não identificado'} — ` +
+                `${alarme.nivel.toUpperCase()}`;
+
+            titulo.style.color =
+                alarme.nivel === 'critico'
+                    ? 'var(--accent-red)'
+                    : 'var(--accent-yellow)';
+
+            const detalhes = document.createElement('p');
+
+            detalhes.textContent =
+                `BPM: ${alarme.bpm} | SpO₂: ${alarme.spo2}% | ` +
+                `Motivo: ${alarme.motivo}`;
+
+            const situacao = document.createElement('p');
+
+            situacao.textContent =
+                `Situação: ${alarme.status} | ` +
+                `Início: ${alarme.inicio}`;
+
+            item.appendChild(titulo);
+            item.appendChild(detalhes);
+            item.appendChild(situacao);
+
+            lista.appendChild(item);
+        });
+
+    } catch (erro) {
+        console.error('[ALARME] Erro no histórico:', erro);
+        status.textContent = 'Não foi possível carregar o histórico.';
+    }
+}
+
+async function atualizarMedicoesAlarmes() {
+    const bpmElemento = document.getElementById('alarmeBpm');
+    const spo2Elemento = document.getElementById('alarmeSpo2');
+    const titulo = document.getElementById('alarmeTitulo');
+    const descricao = document.getElementById('alarmeDescricao');
+
+    if (!bpmElemento || !spo2Elemento || !titulo || !descricao) {
+        return;
+    }
+
+    const limparMedicoes = () => {
+        bpmElemento.textContent = '--';
+        spo2Elemento.textContent = '--';
+        titulo.style.color = 'var(--text-main)';
+        reiniciarConfirmacaoAlarmes();
+        atualizarAlertaSonoro(false);
+    };
+
+    if (!pacienteAtivo.id) {
+        limparMedicoes();
+        atualizarPacienteAlarmes();
+        return;
+    }
+
+    const versaoAtual = ++versaoConsultaAlarmes;
+    const pacienteIdConsultado = pacienteAtivo.id;
+    const dispositivoConsultado = pacienteAtivo.dispositivo;
+
+    try {
+        const dispositivo = encodeURIComponent(pacienteAtivo.dispositivo);
+
+        const [resposta, respostaStatus] = await Promise.all([
+            fetch(`/api/dados/ultimo/${dispositivo}`, {
+                cache: 'no-store'
+            }),
+            fetch('/api/status-esp', {
+                cache: 'no-store'
+            })
+        ]);
+
+        if (!resposta.ok || !respostaStatus.ok) {
+            throw new Error('Falha ao consultar medições.');
+        }
+
+        const dados = await resposta.json();
+        const statusESP = await respostaStatus.json();
+
+        if (
+            versaoAtual !== versaoConsultaAlarmes ||
+            pacienteAtivo.id !== pacienteIdConsultado ||
+            pacienteAtivo.dispositivo !== dispositivoConsultado
+        ) {
+            return;
+        }
+
+        if (!statusESP.online) {
+            limparMedicoes();
+            titulo.textContent = 'ESP32 sem sinal';
+            descricao.textContent =
+                'Aguardando comunicação com o dispositivo.';
+            return;
+        }
+
+        if (dados.bpm === 0 && dados.spo2 === 0) {
+            limparMedicoes();
+            titulo.textContent = 'Sensor livre';
+            descricao.textContent =
+                'Aguardando o paciente colocar o dedo no sensor.';
+            return;
+        }
+
+        if (dados.bpm === -1 && dados.spo2 === -1) {
+            limparMedicoes();
+            titulo.textContent = 'Calculando medições';
+            descricao.textContent =
+                'Aguardando estabilização do sinal.';
+            return;
+        }
+
+        const bpm = Number(dados.bpm);
+        const spo2 = Number(dados.spo2);
+
+        if (!Number.isInteger(bpm) ||
+            !Number.isInteger(spo2) ||
+            bpm < 40 || bpm > 160 ||
+            spo2 < 75 || spo2 > 100) {
+            limparMedicoes();
+            titulo.textContent = 'Sem leitura válida';
+            descricao.textContent =
+                'Aguardando uma medição válida do ESP32.';
+            return;
+        }
+
+        bpmElemento.textContent = bpm;
+        spo2Elemento.textContent = `${spo2}%`;
+
+
+        const classificacao = classificarLeituraAlarme(bpm, spo2);
+        const nivelConfirmado = confirmarLeituraAlarme(dados, classificacao);
+
+        atualizarAlertaSonoro(nivelConfirmado === 'critico');
+
+        if (classificacao.nivel === 'normal') {
+            titulo.textContent = classificacao.titulo;
+            titulo.style.color = 'var(--accent-green)';
+        } else if (nivelConfirmado === classificacao.nivel) {
+            titulo.textContent = classificacao.titulo + ' — Confirmado';
+            titulo.style.color = classificacao.cor;
+        } else {
+            titulo.textContent = 'Verificando alteração nas medições';
+            titulo.style.color = 'var(--accent-yellow)';
+        }
+
+        descricao.textContent =
+            `Paciente: ${pacienteAtivo.nome} | BPM: ${bpm} | SpO₂: ${spo2}%`;
+
+    } catch (erro) {
+        console.error('Erro ao atualizar alarmes:', erro);
+        limparMedicoes();
+        titulo.textContent = 'Falha ao consultar o monitoramento';
+        descricao.textContent =
+            'Não foi possível obter os dados atuais.';
+    }
+}
+
+function atualizarPacienteAlarmes() {
+    const nome = document.getElementById('alarmePaciente');
+    const titulo = document.getElementById('alarmeTitulo');
+    const descricao = document.getElementById('alarmeDescricao');
+
+    if (!nome || !titulo || !descricao) return;
+
+    if (!pacienteAtivo.id) {
+        nome.textContent = 'Nenhum';
+        titulo.textContent = 'Aguardando monitoramento';
+        descricao.textContent = 'Nenhum paciente em monitoramento.';
+        return;
+    }
+
+    nome.textContent = pacienteAtivo.nome;
+    titulo.textContent = 'Monitoramento iniciado';
+    descricao.textContent =
+        `Paciente: ${pacienteAtivo.nome} | Dispositivo: ${pacienteAtivo.dispositivo}`;
+}
+
 function switchTab(tabId, element) {
+    if (tabId !== 'alarmes') {
+        pararSomAlarme();
+    }
+
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
 
     document.getElementById(tabId).classList.add('active');
     element.classList.add('active');
+    if (tabId === 'alarmes') {
+        atualizarPacienteAlarmes();
+        atualizarMedicoesAlarmes();
+        carregarHistoricoAlarmes();
+    }
     if (tabId === 'relatorios') {
         carregarPacientesRelatorio().then(() => {
             mudarTipoRelatorio();
@@ -499,6 +954,11 @@ async function selecionarPacienteParaMonitorar(id, nome, idade, dispositivo) {
 
         const paciente = resultado.paciente;
 
+        invalidarConsultasAlarmes();
+        atualizarAlertaSonoro(false);
+        reiniciarConfirmacaoAlarmes();
+        controleAlarmes.pacienteId = null;
+
         pacienteAtivo = {
             id: paciente.id,
             nome: paciente.nome,
@@ -563,6 +1023,11 @@ async function encerrarMonitoramento() {
             throw new Error('Não foi possível encerrar o monitoramento.');
         }
 
+        atualizarAlertaSonoro(false);
+        reiniciarConfirmacaoAlarmes();
+        controleAlarmes.pacienteId = null;
+        invalidarConsultasAlarmes();
+
         pacienteAtivo = {
             id: null,
             nome: 'Nenhum',
@@ -591,6 +1056,11 @@ async function encerrarMonitoramento() {
             condicao.textContent = 'SEM MONITORAMENTO';
             condicao.style.color = 'var(--accent-yellow)';
         }
+
+        atualizarPacienteAlarmes();
+
+        document.getElementById('alarmeBpm').textContent = '--';
+        document.getElementById('alarmeSpo2').textContent = '--';
 
         alert('Monitoramento encerrado com sucesso.');
 
@@ -1075,6 +1545,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setInterval(verificarStatusConexaoESP, 3000);
     setInterval(atualizarDadosDashboard, 2000);
+    setInterval(() => {
+        const abaAlarmes = document.getElementById('alarmes');
+
+        if (abaAlarmes && abaAlarmes.classList.contains('active')) {
+            atualizarMedicoesAlarmes();
+        }
+    }, 2000);
 
     atualizarDesempenho();
     setInterval(atualizarDesempenho, 3000);
@@ -1472,5 +1949,91 @@ async function analisarComunicacaoESP32() {
         console.error('Erro ao analisar comunicação:', erro);
         resultado.textContent =
             'Não foi possível consultar as estatísticas de comunicação.';
+    }
+}
+
+
+function simularAlarme() {
+    const bpm = Number(
+        document.getElementById('simulacaoBpm').value
+    );
+
+    const spo2 = Number(
+        document.getElementById('simulacaoSpo2').value
+    );
+
+    const resultado = document.getElementById(
+        'resultadoSimulacaoAlarme'
+    );
+
+    if (!Number.isInteger(bpm) ||
+        !Number.isInteger(spo2) ||
+        bpm < 40 || bpm > 160 ||
+        spo2 < 75 || spo2 > 100) {
+
+        resultado.textContent =
+            'Informe valores válidos de BPM e SpO₂.';
+        return;
+    }
+
+    const classificacao = classificarLeituraAlarme(bpm, spo2);
+
+    resultado.textContent =
+        `SIMULAÇÃO — ${classificacao.titulo} | BPM: ${bpm} | SpO₂: ${spo2}%`;
+
+    resultado.style.color = classificacao.cor;
+}
+
+function encerrarSimulacaoAlarme() {
+    const resultado = document.getElementById(
+        'resultadoSimulacaoAlarme'
+    );
+
+    resultado.textContent = 'Simulação encerrada.';
+    resultado.style.color = 'var(--text-muted)';
+}
+
+
+function testarSomAlarmeSimulado() {
+    // Teste isolado: não modifica alarmes reais
+    // nem envia medições ao servidor.
+    if (!somAlarmeAtivado || somAlarmeSilenciado ||
+        !audioContextAlarme ||
+        audioContextAlarme.state !== 'running') {
+        alert('Clique em Ativar som antes de testar.');
+        return;
+    }
+
+    const contexto = audioContextAlarme;
+    const oscilador = contexto.createOscillator();
+    const volume = contexto.createGain();
+
+    oscilador.type = 'sine';
+    oscilador.frequency.value = 850;
+
+    const inicio = contexto.currentTime;
+
+    volume.gain.setValueAtTime(0.0001, inicio);
+    volume.gain.exponentialRampToValueAtTime(
+        0.12, inicio + 0.02
+    );
+    volume.gain.exponentialRampToValueAtTime(
+        0.0001, inicio + 0.30
+    );
+
+    oscilador.connect(volume);
+    volume.connect(contexto.destination);
+
+    oscilador.start(inicio);
+    oscilador.stop(inicio + 0.31);
+
+    const resultado = document.getElementById(
+        'resultadoSimulacaoAlarme'
+    );
+
+    if (resultado) {
+        resultado.textContent =
+            'Teste sonoro executado. Verifique se ouviu o aviso.';
+        resultado.style.color = 'var(--accent-blue)';
     }
 }

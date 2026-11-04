@@ -257,22 +257,161 @@
                 </div>
             </div>
 
+
             <div id="alarmes" class="tab-content">
                 <header>
                     <h1>Central de Alarmes e Alertas</h1>
-                    <p style="color: var(--text-muted);">Monitoramento de limites críticos para batimentos e oxigenação.
+                    <p style="color: var(--text-muted);">
+                        Monitoramento de alertas de BPM e SpO₂.
                     </p>
                 </header>
+
                 <div class="card" style="margin-top: 1.5rem;">
-                    <div style="display: flex; align-items: center; gap: 1rem;">
-                        <i data-lucide="bell-ring" style="color: var(--accent-yellow); width: 32px; height: 32px;"></i>
-                        <div>
-                            <h3 style="color: var(--text-main);">Nenhum Alarme Crítico Ativo</h3>
-                            <p style="color: var(--text-muted); font-size: 0.9rem;">Os sensores estão a operar dentro
-                                dos limiares seguros (BPM: 60-100, SpO₂ > 95%).</p>
+                    <div style="display: flex; align-items: center;
+                    gap: 1rem; flex-wrap: wrap;">
+
+                        <i data-lucide="bell-ring" style="color: var(--accent-yellow);
+                      width: 32px; height: 32px;"></i>
+
+                        <div style="flex: 1;">
+                            <h3 id="alarmeTitulo">
+                                Aguardando monitoramento
+                            </h3>
+
+                            <p id="alarmeDescricao" style="color: var(--text-muted);
+                          font-size: 0.9rem;">
+                                Nenhum paciente em monitoramento.
+                            </p>
                         </div>
                     </div>
                 </div>
+
+                <div class="grid-cards" style="margin-top: 1.5rem;">
+                    <div class="card">
+                        <div class="card-header">
+                            <span>PACIENTE MONITORADO</span>
+                        </div>
+                        <h2 id="alarmePaciente">Nenhum</h2>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <span>BATIMENTOS (BPM)</span>
+                        </div>
+                        <h2 id="alarmeBpm">--</h2>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <span>OXIGENAÇÃO (SpO₂)</span>
+                        </div>
+                        <h2 id="alarmeSpo2">--</h2>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-top: 1.5rem;">
+                    <h3>Controle de alerta sonoro</h3>
+
+                    <p style="color: var(--text-muted);
+                  margin: 0.8rem 0;">
+                        O som será utilizado apenas para alertas
+                        confirmados durante o monitoramento.
+                    </p>
+
+                    <div style="display: flex; flex-wrap: wrap;
+                    gap: 1rem; margin-top: 1rem;">
+
+                        <button type="button" id="ativarSomAlarme" disabled>
+                            Ativar som
+                        </button>
+
+                        <button type="button" id="silenciarSomAlarme" disabled>
+                            Silenciar alarme
+                        </button>
+                    </div>
+
+                    <p id="alarmeSomStatus" style="color: var(--text-muted);
+                  margin-top: 1rem;">
+                        Controle sonoro em preparação.
+                    </p>
+                </div>
+
+                <div class="card" style="margin-top: 1.5rem;">
+                    <h3>Histórico de alertas</h3>
+
+                    <p id="alarmeHistoricoStatus" style="color: var(--text-muted);
+                  margin-top: 1rem;">
+                        Nenhum alerta carregado.
+                    </p>
+
+                    <div id="alarmeHistoricoLista" style="margin-top: 1rem;">
+                    </div>
+                </div>
+
+                <details class="card" style="margin-top: 1.5rem;">
+                    <summary style="color: var(--accent-blue);
+                        cursor: pointer;
+                        font-weight: bold;">
+                        Laboratório de Simulação de Alarmes
+                    </summary>
+
+                    <p style="color: var(--text-muted);
+                  margin-top: 1rem;">
+                        Simulação acadêmica com valores fictícios.
+                        Não altera as medições reais dos pacientes.
+                    </p>
+
+
+                    <div id="laboratorioAlarmes" style="margin-top: 1rem;">
+
+                        <div style="display: flex; flex-wrap: wrap;
+                gap: 1rem; align-items: end;">
+
+                            <div>
+                                <label for="simulacaoBpm">BPM simulado</label>
+                                <input type="number" id="simulacaoBpm" value="80" min="40" max="160" style="display:block; padding:0.7rem;
+                          background:#0f172a; color:white;
+                          border:1px solid var(--card-border);
+                          border-radius:6px; width:140px;">
+                            </div>
+
+                            <div>
+                                <label for="simulacaoSpo2">SpO₂ simulada (%)</label>
+                                <input type="number" id="simulacaoSpo2" value="99" min="75" max="100" style="display:block; padding:0.7rem;
+                          background:#0f172a; color:white;
+                          border:1px solid var(--card-border);
+                          border-radius:6px; width:140px;">
+                            </div>
+
+                            <button type="button" onclick="simularAlarme()" style="padding:0.75rem 1rem;
+                       background:var(--accent-blue);
+                       color:#00111f; border:0;
+                       border-radius:6px; cursor:pointer;">
+                                Simular alarme
+                            </button>
+
+                            <button type="button" onclick="encerrarSimulacaoAlarme()" style="padding:0.75rem 1rem;
+                       background:#334155; color:white;
+                       border:0; border-radius:6px;
+                       cursor:pointer;">
+                                Encerrar simulação
+                            </button>
+                            <button type="button" onclick="testarSomAlarmeSimulado()" style="padding:0.75rem 1rem;
+               background:var(--accent-yellow);
+               color:#0f172a;
+               border:0;
+               border-radius:6px;
+               cursor:pointer;">
+                                Testar som
+                            </button>
+                        </div>
+
+                        <p id="resultadoSimulacaoAlarme" style="margin-top:1rem; color:var(--text-muted);">
+                            Informe os valores e execute a simulação.
+                        </p>
+                    </div>
+
+                </details>
             </div>
 
             <div id="custos" class="tab-content">

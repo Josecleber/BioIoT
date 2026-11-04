@@ -17,6 +17,22 @@ const db = new sqlite3.Database(dbPath, (err) => {
     }
 });
 
+
+const dbAlarmes = new sqlite3.Database(dbPath, (err) => {
+    if (err) {
+        console.error(
+            '[ALARME] Erro ao abrir conexão SQLite:',
+            err.message
+        );
+    } else {
+        console.log(
+            '[ALARME] Conexão SQLite exclusiva iniciada.'
+        );
+    }
+});
+
+dbAlarmes.configure('busyTimeout', 5000);
+
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS pacientes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,8 +48,23 @@ db.serialize(() => {
         spo2 INTEGER NOT NULL,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
-    // Migração: identifica o paciente nas novas medições.
-    // Registros antigos permanecem com paciente_id = NULL.
+
+    db.run(`CREATE TABLE IF NOT EXISTS alarmes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        paciente_id INTEGER NOT NULL,
+        dispositivo TEXT NOT NULL,
+        sessao_id TEXT NOT NULL,
+        nivel TEXT NOT NULL,
+        motivo TEXT NOT NULL,
+        bpm INTEGER NOT NULL,
+        spo2 INTEGER NOT NULL,
+        leitura_id INTEGER,
+        status TEXT NOT NULL DEFAULT 'ativo',
+        inicio DATETIME DEFAULT CURRENT_TIMESTAMP,
+        encerramento DATETIME,
+        FOREIGN KEY (paciente_id) REFERENCES pacientes(id)
+    )`);
+
     db.all('PRAGMA table_info(leituras)', [], (err, colunas) => {
         if (err) {
             console.error('Erro ao verificar estrutura de leituras:', err.message);
@@ -308,6 +339,7 @@ app.post('/api/monitoramento/iniciar', (req, res) => {
 
             pacientesEmMonitoramento.set(dispositivo, paciente.id);
             sessoesEmMonitoramento.set(dispositivo, sessaoId);
+            confirmacoesAlarmesServidor.delete(dispositivo);
 
             delete estadosUI[dispositivo];
 
@@ -330,16 +362,57 @@ app.post('/api/monitoramento/encerrar', (req, res) => {
         });
     }
 
-    pacientesEmMonitoramento.delete(dispositivo);
-    sessoesEmMonitoramento.delete(dispositivo);
-    ultimoEncerramentoMonitoramento.set(dispositivo, Date.now());
-    sensoresComDedoRemovido.delete(dispositivo);
-    delete estadosUI[dispositivo];
+    const sessaoEncerrada =
+        sessoesEmMonitoramento.get(dispositivo);
 
-    res.json({
-        status: 'monitoramento_encerrado',
-        dispositivo
-    });
+    if (dispositivosEncerrandoMonitoramento.has(dispositivo)) {
+        return res.status(409).json({
+            erro: 'O monitoramento já está sendo encerrado.'
+        });
+    }
+
+    dispositivosEncerrandoMonitoramento.add(dispositivo);
+
+    function finalizarMonitoramento() {
+        pacientesEmMonitoramento.delete(dispositivo);
+        sessoesEmMonitoramento.delete(dispositivo);
+        confirmacoesAlarmesServidor.delete(dispositivo);
+
+        ultimoEncerramentoMonitoramento.set(
+            dispositivo,
+            Date.now()
+        );
+
+        sensoresComDedoRemovido.delete(dispositivo);
+        delete estadosUI[dispositivo];
+
+        dispositivosEncerrandoMonitoramento.delete(dispositivo);
+
+        res.json({
+            status: 'monitoramento_encerrado',
+            dispositivo
+        });
+    }
+
+    if (!sessaoEncerrada) {
+        return finalizarMonitoramento();
+    }
+
+    encerrarAlarmesDaSessao(
+        dispositivo,
+        sessaoEncerrada,
+        (erro) => {
+            if (erro) {
+                dispositivosEncerrandoMonitoramento.delete(dispositivo);
+
+                return res.status(500).json({
+                    erro: 'Não foi possível encerrar os alarmes da sessão.'
+                });
+            }
+
+            finalizarMonitoramento();
+        }
+    );
 });
 
 app.get('/api/monitoramento/:dispositivo', (req, res) => {
@@ -423,6 +496,458 @@ app.post('/api/pacientes', (req, res) => {
     );
 });
 
+function encerrarAlarmesNormalizados(dispositivo, sessaoId) {
+    enfileirarOperacaoAlarme({
+        tipo: 'alterar_status',
+        dispositivo,
+        sessaoId,
+        status: 'encerrado'
+    });
+}
+
+function interromperAlarmesDaSessao(dispositivo, sessaoId) {
+    enfileirarOperacaoAlarme({
+        tipo: 'alterar_status',
+        dispositivo,
+        sessaoId,
+        status: 'interrompido'
+    });
+}
+
+function encerrarAlarmesDaSessao(dispositivo, sessaoId, callback) {
+    const chave = chaveSessaoAlarme(dispositivo, sessaoId);
+
+    sessoesComAlarmesEncerrados.add(chave);
+
+    enfileirarOperacaoAlarme({
+        tipo: 'alterar_status',
+        dispositivo,
+        sessaoId,
+        status: 'encerrado',
+        callback: (erro) => {
+            if (erro) {
+                sessoesComAlarmesEncerrados.delete(chave);
+            }
+
+            if (callback) callback(erro || null);
+        }
+    });
+}
+
+const filaSubstituicaoAlarmes = [];
+let substituicaoAlarmeEmAndamento = false;
+
+const sessoesComAlarmesEncerrados = new Set();
+
+function chaveSessaoAlarme(dispositivo, sessaoId) {
+    return JSON.stringify([dispositivo, sessaoId]);
+}
+
+function enfileirarOperacaoAlarme(operacao) {
+    filaSubstituicaoAlarmes.push(operacao);
+    processarFilaSubstituicaoAlarmes();
+}
+
+function substituirAlarmeAtivo(dados) {
+    const chave = chaveSessaoAlarme(
+        dados.dispositivo,
+        dados.sessaoId
+    );
+
+    if (sessoesComAlarmesEncerrados.has(chave)) {
+        console.warn(
+            '[ALARME] Registro ignorado: sessão encerrada.'
+        );
+        return;
+    }
+
+    enfileirarOperacaoAlarme(dados);
+}
+
+function liberarFilaSubstituicaoAlarmes() {
+    substituicaoAlarmeEmAndamento = false;
+    processarFilaSubstituicaoAlarmes();
+}
+
+function processarFilaSubstituicaoAlarmes() {
+    if (substituicaoAlarmeEmAndamento) return;
+
+    const operacao = filaSubstituicaoAlarmes.shift();
+    if (!operacao) return;
+
+    substituicaoAlarmeEmAndamento = true;
+
+    // Operações de encerramento, interrupção e normalização
+    if (operacao.tipo === 'alterar_status') {
+        const status = operacao.status;
+
+        if (!['encerrado', 'interrompido'].includes(status)) {
+            console.error('[ALARME] Status inválido:', status);
+            if (operacao.callback) {
+                operacao.callback(new Error('Status inválido'));
+            }
+            liberarFilaSubstituicaoAlarmes();
+            return;
+        }
+
+        dbAlarmes.run(
+            `UPDATE alarmes
+             SET status = ?,
+                 encerramento = CURRENT_TIMESTAMP
+             WHERE dispositivo = ?
+               AND sessao_id = ?
+               AND status = 'ativo'`,
+            [status, operacao.dispositivo, operacao.sessaoId],
+            function (erro) {
+                if (erro) {
+                    console.error(
+                        '[ALARME] Erro ao alterar status:',
+                        erro.message
+                    );
+                }
+
+                liberarFilaSubstituicaoAlarmes();
+
+                if (operacao.callback) {
+                    operacao.callback(erro || null);
+                }
+            }
+        );
+
+        return;
+    }
+
+    const dados = operacao.dados ?? operacao;
+
+    const chave = chaveSessaoAlarme(
+        dados.dispositivo,
+        dados.sessaoId
+    );
+
+
+    const sessaoAtual = sessoesEmMonitoramento.get(
+        dados.dispositivo
+    );
+
+    const pacienteAtual = pacientesEmMonitoramento.get(
+        dados.dispositivo
+    );
+
+    const sessaoInvalida =
+        sessaoAtual !== dados.sessaoId ||
+        pacienteAtual !== dados.pacienteId;
+
+    if (
+        sessoesComAlarmesEncerrados.has(chave) ||
+        dispositivosEncerrandoMonitoramento.has(dados.dispositivo) ||
+        sessaoInvalida
+    ) {
+        console.warn(
+            '[ALARME] Registro descartado: sessão ou paciente inválido.'
+        );
+
+        liberarFilaSubstituicaoAlarmes();
+        return;
+    }
+
+    const motivos = [];
+
+    if (dados.bpm < 50) motivos.push('BPM muito baixo');
+    if (dados.bpm > 120) motivos.push('BPM muito elevado');
+    if (dados.spo2 < 93) motivos.push('SpO2 muito baixa');
+
+    if (dados.nivel === 'atencao') {
+        if (dados.bpm < 60 && dados.bpm >= 50) {
+            motivos.push('BPM abaixo do limite de atencao');
+        }
+        if (dados.bpm > 100 && dados.bpm <= 120) {
+            motivos.push('BPM acima do limite de atencao');
+        }
+        if (dados.spo2 < 96 && dados.spo2 >= 93) {
+            motivos.push('SpO2 abaixo do limite de atencao');
+        }
+    }
+
+    const motivo = motivos.join('; ') || 'Medicao fora dos limites';
+
+    dbAlarmes.serialize(() => {
+        dbAlarmes.run('BEGIN IMMEDIATE TRANSACTION', (erroInicio) => {
+            if (erroInicio) {
+                console.error(
+                    '[ALARME] Erro ao iniciar transação:',
+                    erroInicio.message
+                );
+                liberarFilaSubstituicaoAlarmes();
+                return;
+            }
+
+            const atualizar = `
+                UPDATE alarmes
+                SET status = 'encerrado',
+                    encerramento = CURRENT_TIMESTAMP
+                WHERE dispositivo = ?
+                  AND sessao_id = ?
+                  AND status = 'ativo'
+            `;
+
+            dbAlarmes.run(
+                atualizar,
+                [dados.dispositivo, dados.sessaoId],
+                (erroAtualizacao) => {
+                    if (erroAtualizacao) {
+                        return dbAlarmes.run('ROLLBACK', (erroRollback) => {
+                            console.error(
+                                '[ALARME] Transação cancelada:',
+                                erroAtualizacao.message
+                            );
+
+                            if (erroRollback) {
+                                console.error('[ALARME] Falha no ROLLBACK:', erroRollback.message);
+                            }
+
+                            liberarFilaSubstituicaoAlarmes();
+                        });
+                    }
+
+                    const inserir = `
+                        INSERT INTO alarmes (
+                            paciente_id, dispositivo, sessao_id,
+                            nivel, motivo, bpm, spo2,
+                            leitura_id, status
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ativo')
+                    `;
+
+                    dbAlarmes.run(
+                        inserir,
+                        [
+                            dados.pacienteId,
+                            dados.dispositivo,
+                            dados.sessaoId,
+                            dados.nivel,
+                            motivo,
+                            dados.bpm,
+                            dados.spo2,
+                            dados.leituraId
+                        ],
+                        function (erroInsercao) {
+                            if (erroInsercao) {
+                                return dbAlarmes.run('ROLLBACK', (erroRollback) => {
+                                    console.error(
+                                        '[ALARME] Gravação cancelada:',
+                                        erroInsercao.message
+                                    );
+
+                                    if (erroRollback) {
+                                        console.error('[ALARME] Falha no ROLLBACK:', erroRollback.message);
+                                    }
+
+                                    liberarFilaSubstituicaoAlarmes();
+                                });
+                            }
+
+
+                            dbAlarmes.run('COMMIT', (erroCommit) => {
+                                if (erroCommit) {
+                                    console.error(
+                                        '[ALARME] Erro ao confirmar transação:',
+                                        erroCommit.message
+                                    );
+
+                                    return dbAlarmes.run('ROLLBACK', (erroRollback) => {
+                                        if (erroRollback) {
+                                            console.error(
+                                                '[ALARME] Falha no ROLLBACK:',
+                                                erroRollback.message
+                                            );
+                                        }
+
+                                        liberarFilaSubstituicaoAlarmes();
+                                    });
+                                }
+
+                                console.log(
+                                    `[ALARME] Nova ocorrência confirmada | ` +
+                                    `Paciente: ${dados.pacienteId} | ` +
+                                    `Nível: ${dados.nivel}`
+                                );
+
+                                liberarFilaSubstituicaoAlarmes();
+                            });
+                        }
+                    );
+                }
+            );
+        });
+    });
+}
+
+function registrarAlarmeConfirmado({
+    pacienteId,
+    dispositivo,
+    sessaoId,
+    nivel,
+    bpm,
+    spo2,
+    leituraId
+}) {
+    const motivos = [];
+
+    if (bpm < 50) motivos.push('BPM muito baixo');
+    if (bpm > 120) motivos.push('BPM muito elevado');
+    if (spo2 < 93) motivos.push('SpO2 muito baixa');
+
+    if (nivel === 'atencao') {
+        if (bpm < 60 && bpm >= 50) {
+            motivos.push('BPM abaixo do limite de atencao');
+        }
+        if (bpm > 100 && bpm <= 120) {
+            motivos.push('BPM acima do limite de atencao');
+        }
+        if (spo2 < 96 && spo2 >= 93) {
+            motivos.push('SpO2 abaixo do limite de atencao');
+        }
+    }
+
+    const motivo = motivos.join('; ') || 'Medicao fora dos limites';
+
+    const query = `
+        INSERT INTO alarmes (
+            paciente_id,
+            dispositivo,
+            sessao_id,
+            nivel,
+            motivo,
+            bpm,
+            spo2,
+            leitura_id,
+            status
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ativo')
+    `;
+
+    db.run(
+        query,
+        [
+            pacienteId,
+            dispositivo,
+            sessaoId,
+            nivel,
+            motivo,
+            bpm,
+            spo2,
+            leituraId
+        ],
+
+        function (err) {
+            if (err) {
+                console.error(
+                    '[ALARME] Erro ao registrar:',
+                    err.message
+                );
+                return;
+            }
+
+            console.log(
+                `[ALARME] Registro criado: ${this.lastID} | ` +
+                `Paciente: ${pacienteId} | Nivel: ${nivel}`
+            );
+        }
+    );
+}
+
+const confirmacoesAlarmesServidor = new Map();
+const dispositivosEncerrandoMonitoramento = new Set();
+
+function classificarAlarmeServidor(bpm, spo2) {
+    if (bpm < 50 || bpm > 120 || spo2 < 93) {
+        return 'critico';
+    }
+
+    if (bpm < 60 || bpm > 100 || spo2 < 96) {
+        return 'atencao';
+    }
+
+    return 'normal';
+}
+
+function confirmarAlarmeServidor(
+    dispositivo,
+    pacienteId,
+    sessaoId,
+    leituraId,
+    bpm,
+    spo2
+) {
+    const nivel = classificarAlarmeServidor(bpm, spo2);
+
+    let controle = confirmacoesAlarmesServidor.get(dispositivo);
+
+    // Uma nova sessão nunca herda confirmações anteriores.
+    if (!controle ||
+        controle.pacienteId !== pacienteId ||
+        controle.sessaoId !== sessaoId) {
+
+        controle = {
+            pacienteId,
+            sessaoId,
+            ultimoLeituraId: null,
+            nivelPendente: null,
+            consecutivas: 0,
+            nivelConfirmado: null,
+            normaisConsecutivas: 0
+        };
+
+        confirmacoesAlarmesServidor.set(dispositivo, controle);
+    }
+
+    if (leituraId <= (controle.ultimoLeituraId ?? 0)) {
+        return null;
+    }
+
+    controle.ultimoLeituraId = leituraId;
+
+    if (nivel === 'normal') {
+        controle.normaisConsecutivas++;
+
+        if (controle.normaisConsecutivas < 3) {
+            return null;
+        }
+
+        const haviaAlerta = controle.nivelConfirmado !== null;
+
+        controle.nivelPendente = null;
+        controle.consecutivas = 0;
+        controle.nivelConfirmado = null;
+
+        if (haviaAlerta) {
+            return 'normalizado';
+        }
+
+        return null;
+    }
+
+    controle.normaisConsecutivas = 0;
+
+    if (controle.nivelPendente === nivel) {
+        controle.consecutivas++;
+    } else {
+        controle.nivelPendente = nivel;
+        controle.consecutivas = 1;
+        controle.nivelConfirmado = null;
+    }
+
+    if (controle.consecutivas >= 3) {
+
+        if (controle.nivelConfirmado !== nivel) {
+            controle.nivelConfirmado = nivel;
+            return nivel;
+        }
+    }
+
+    return null;
+}
+
 app.post('/api/dados', (req, res) => {
     const { dispositivo, bpm, spo2, sessaoId } = req.body;
     estatisticasComunicacao.medicoesRecebidas++;
@@ -452,6 +977,14 @@ app.post('/api/dados', (req, res) => {
     }
 
     const sessaoAtiva = sessoesEmMonitoramento.get(dispositivo) ?? null;
+
+    if (dispositivosEncerrandoMonitoramento.has(dispositivo)) {
+        estatisticasComunicacao.medicoesRejeitadas++;
+
+        return res.status(409).json({
+            erro: 'Monitoramento em encerramento.'
+        });
+    }
 
     const sessaoInformada =
         typeof sessaoId === 'string' ? sessaoId : '';
@@ -483,6 +1016,12 @@ app.post('/api/dados', (req, res) => {
 
     // Comando de interface
     if (bpm <= 0) {
+        confirmacoesAlarmesServidor.delete(dispositivo);
+
+        if (sessaoAtiva) {
+            interromperAlarmesDaSessao(dispositivo, sessaoAtiva);
+        }
+
         estatisticasComunicacao.medicoesAceitas++;
         estatisticasComunicacao.estadosInterface++;
 
@@ -522,6 +1061,64 @@ app.post('/api/dados', (req, res) => {
 
         estatisticasComunicacao.medicoesAceitas++;
         estatisticasComunicacao.leiturasGravadas++;
+
+        const sessaoAindaValida =
+            !dispositivosEncerrandoMonitoramento.has(dispositivo) &&
+            pacientesEmMonitoramento.get(dispositivo) === pacienteId &&
+            sessoesEmMonitoramento.get(dispositivo) === sessaoAtiva;
+
+        if (!sessaoAindaValida) {
+            console.warn(
+                `[LEITURA PENDENTE] Dispositivo: ${dispositivo} | ` +
+                `Paciente: ${pacienteId} | ` +
+                `Sessao: ${sessaoAtiva} | ` +
+                `Leitura: ${this.lastID}`
+            );
+
+            return res.status(409).json({
+                erro: 'Leitura gravada, mas a sessão foi encerrada ou alterada.'
+            });
+        }
+
+        const nivelAlarmeConfirmado = confirmarAlarmeServidor(
+            dispositivo,
+            pacienteId,
+            sessaoAtiva,
+            this.lastID,
+            bpm,
+            spo2
+        );
+
+        if (
+            nivelAlarmeConfirmado === 'normalizado' &&
+            pacientesEmMonitoramento.get(dispositivo) === pacienteId &&
+            sessoesEmMonitoramento.get(dispositivo) === sessaoAtiva
+        ) {
+            encerrarAlarmesNormalizados(dispositivo, sessaoAtiva);
+        }
+
+        if (
+            nivelAlarmeConfirmado &&
+            nivelAlarmeConfirmado !== 'normalizado' &&
+            pacientesEmMonitoramento.get(dispositivo) === pacienteId &&
+            sessoesEmMonitoramento.get(dispositivo) === sessaoAtiva
+        ) {
+            console.log(
+                `[ALARME CONFIRMADO] Paciente: ${pacienteId} | ` +
+                `Nivel: ${nivelAlarmeConfirmado} | ` +
+                `BPM: ${bpm} | SpO2: ${spo2}%`
+            );
+
+            substituirAlarmeAtivo({
+                pacienteId,
+                dispositivo,
+                sessaoId: sessaoAtiva,
+                nivel: nivelAlarmeConfirmado,
+                bpm,
+                spo2,
+                leituraId: this.lastID
+            });
+        }
 
         estadosUI[dispositivo] = {
             id: this.lastID,
@@ -674,10 +1271,46 @@ app.get('/api/dados/ultimo/:dispositivo', (req, res) => {
         });
     }
 
-    // Entrega somente uma medição válida e recente.
     res.json(estado);
 });
 
+
+app.get('/api/alarmes/historico', (req, res) => {
+    const query = `
+        SELECT
+            a.id,
+            a.paciente_id,
+            p.nome AS paciente_nome,
+            a.dispositivo,
+            a.nivel,
+            a.motivo,
+            a.bpm,
+            a.spo2,
+            a.status,
+            a.inicio,
+            a.encerramento
+        FROM alarmes AS a
+        LEFT JOIN pacientes AS p
+            ON p.id = a.paciente_id
+        ORDER BY a.id DESC
+        LIMIT 100
+    `;
+
+    db.all(query, [], (err, registros) => {
+        if (err) {
+            console.error(
+                '[ALARME] Erro ao consultar histórico:',
+                err.message
+            );
+
+            return res.status(500).json({
+                erro: 'Não foi possível consultar o histórico.'
+            });
+        }
+
+        res.json(registros);
+    });
+});
 
 app.get('/api/relatorios/geral', (req, res) => {
     const { inicio, fim } = req.query;
