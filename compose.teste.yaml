@@ -1,0 +1,14 @@
+services:
+  site:
+    build: .
+    restart: "no"
+    environment:
+      PORT: "3000"
+      NODE_ENV: test
+    ports:
+      - "3001:3000"
+    volumes:
+      - banco_teste:/data
+
+volumes:
+  banco_teste:

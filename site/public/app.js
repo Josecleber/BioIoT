@@ -1442,10 +1442,11 @@ function inicializarGraficoPerformance() {
     });
 }
 
-
 async function sincronizarPacienteAtivo() {
     try {
-        const dispositivo = 'ESP32-BANCADA-01';
+        const dispositivo =
+            new URLSearchParams(window.location.search).get('dispositivo')?.trim()
+            || 'ESP32-BANCADA-01';
 
         const resposta = await fetch(
             `/api/monitoramento/${encodeURIComponent(dispositivo)}`
