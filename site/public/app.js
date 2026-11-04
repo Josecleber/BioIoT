@@ -552,7 +552,7 @@ async function atualizarMedicoesAlarmes() {
             fetch(`/api/dados/ultimo/${dispositivo}`, {
                 cache: 'no-store'
             }),
-            fetch('/api/status-esp', {
+            fetch(`/api/status-esp/${dispositivo}`, {
                 cache: 'no-store'
             })
         ]);
@@ -686,7 +686,10 @@ function switchTab(tabId, element) {
 
 async function verificarStatusConexaoESP() {
     try {
-        const resposta = await fetch('/api/status-esp');
+        const resposta = await fetch(
+            `/api/status-esp/${encodeURIComponent(pacienteAtivo.dispositivo)}`
+        );
+
         const dados = await resposta.json();
 
         const elementoCondicao = document.getElementById('condicaoGeralTexto');
@@ -1103,7 +1106,10 @@ async function atualizarDadosDashboard() {
         const res = await fetch(`/api/dados/ultimo/${pacienteAtivo.dispositivo}`);
         const dados = await res.json();
 
-        const respostaStatus = await fetch('/api/status-esp');
+        const respostaStatus = await fetch(
+            `/api/status-esp/${encodeURIComponent(pacienteAtivo.dispositivo)}`
+        );
+
         const statusESP = await respostaStatus.json();
 
         if (!statusESP.online) {

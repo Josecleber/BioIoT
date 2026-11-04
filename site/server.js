@@ -91,6 +91,7 @@ db.serialize(() => {
 });
 
 let ultimaConexaoESP = null;
+const ultimasConexoesESP = new Map();
 let estadosUI = {};
 
 const pacientesEmMonitoramento = new Map();
@@ -202,8 +203,12 @@ app.post('/api/heartbeat', (req, res) => {
     }
 
     estatisticasComunicacao.heartbeatsRecebidos++;
+
     estatisticasComunicacao.ultimoHeartbeat = agoraHeartbeat;
+
     ultimaConexaoESP = agoraHeartbeat;
+    ultimasConexoesESP.set(dispositivo, agoraHeartbeat);
+
 
     res.status(200).json({
         status: 'online',
@@ -221,6 +226,31 @@ app.get('/api/status-esp', (req, res) => {
     res.json({ online });
 });
 
+
+app.get('/api/status-esp/:dispositivo', (req, res) => {
+    const dispositivo = req.params.dispositivo;
+
+    const ultimaConexao =
+        ultimasConexoesESP.get(dispositivo) ?? null;
+
+    const tempoDecorrido = ultimaConexao === null
+        ? null
+        : Date.now() - ultimaConexao;
+
+    const online =
+        tempoDecorrido !== null &&
+        tempoDecorrido >= 0 &&
+        tempoDecorrido < 10000;
+
+    res.json({
+        dispositivo,
+        online,
+        ultimaComunicacaoSegundos:
+            tempoDecorrido === null
+                ? null
+                : Math.floor(tempoDecorrido / 1000)
+    });
+});
 
 app.get('/api/estatisticas-comunicacao', (req, res) => {
     const intervalos = estatisticasComunicacao.intervalosHeartbeatMs;
@@ -1005,7 +1035,10 @@ app.post('/api/dados', (req, res) => {
         });
     }
 
-    ultimaConexaoESP = Date.now();
+    const agoraConexao = Date.now();
+
+    ultimaConexaoESP = agoraConexao;
+    ultimasConexoesESP.set(dispositivo, agoraConexao);
 
     if (bpm === 0 && spo2 === 0) {
         sensoresComDedoRemovido.add(dispositivo);
@@ -1014,7 +1047,6 @@ app.post('/api/dados', (req, res) => {
         sensoresComDedoRemovido.delete(dispositivo);
     }
 
-    // Comando de interface
     if (bpm <= 0) {
         confirmacoesAlarmesServidor.delete(dispositivo);
 
