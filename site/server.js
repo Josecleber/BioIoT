@@ -1660,6 +1660,35 @@ app.get('/modulos/ordenacao_registros.js', (req, res) => {
     );
 });
 
-app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}! Acesse http://localhost:${PORT}`);
-});
+
+db.run(
+    `UPDATE alarmes
+     SET status = 'interrompido',
+         encerramento = CURRENT_TIMESTAMP
+     WHERE status = 'ativo'`,
+    function (erro) {
+        if (erro) {
+            console.error(
+                '[ALARME] Falha na recuperação inicial:',
+                erro.message
+            );
+
+            process.exitCode = 1;
+            db.close();
+            dbAlarmes.close();
+            return;
+        }
+
+        console.log(
+            `[ALARME] Recuperação inicial concluída. ` +
+            `Ocorrências interrompidas: ${this.changes}`
+        );
+
+        app.listen(PORT, () => {
+            console.log(
+                `Servidor rodando na porta ${PORT}! ` +
+                `Acesse http://localhost:${PORT}`
+            );
+        });
+    }
+);
