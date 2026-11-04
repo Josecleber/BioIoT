@@ -157,6 +157,8 @@ this.aguardarFila = function (callback) {
 
     contexto.interromper('ESP32-TESTE', 'SESSAO-B');
 
+    await aguardarFila();
+
     const interrompido = await consultar(
         'SELECT * FROM alarmes WHERE leitura_id = 1002'
     );
@@ -167,6 +169,8 @@ this.aguardarFila = function (callback) {
     await criarAlarme('SESSAO-C', 1003);
 
     contexto.encerrar('ESP32-TESTE', 'SESSAO-C');
+
+    await aguardarFila();
 
     const encerrado = await consultar(
         'SELECT * FROM alarmes WHERE leitura_id = 1003'
