@@ -418,6 +418,27 @@ function invalidarConsultasAlarmes() {
     versaoConsultaAlarmes++;
 }
 
+function formatarDataAlarme(valor) {
+    if (!valor) return '—';
+
+    const data = new Date(
+        valor.replace(' ', 'T') + 'Z'
+    );
+
+    if (Number.isNaN(data.getTime())) {
+        return 'Data inválida';
+    }
+
+    return data.toLocaleString('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+}
 
 async function carregarHistoricoAlarmes() {
     const status = document.getElementById('alarmeHistoricoStatus');
@@ -476,7 +497,12 @@ async function carregarHistoricoAlarmes() {
 
             situacao.textContent =
                 `Situação: ${alarme.status} | ` +
-                `Início: ${alarme.inicio}`;
+                `Início: ${formatarDataAlarme(alarme.inicio)}` +
+                (
+                    alarme.encerramento
+                        ? ` | Encerramento: ${formatarDataAlarme(alarme.encerramento)}`
+                        : ''
+                );
 
             item.appendChild(titulo);
             item.appendChild(detalhes);
