@@ -278,11 +278,82 @@ async function testar() {
 
     console.log('OK - Nova sessão registrou alarme corretamente');
 
+
+    // Teste: encerramento solicitado durante uma transação.
+    const sessaoDuranteTransacao = 'SESSAO-DURANTE-TRANSACAO';
+
+    sessoesEmMonitoramento.set(
+        'ESP32-TESTE',
+        sessaoDuranteTransacao
+    );
+    pacientesEmMonitoramento.set('ESP32-TESTE', 999);
+
+    const executarOriginal = db.run;
+    let interceptouInsercao = false;
+    let promessaEncerramento;
+
+    try {
+        // Intercepta a inserção somente no banco temporário.
+        db.run = function (sql, ...argumentos) {
+            if (
+                !interceptouInsercao &&
+                /^\s*INSERT INTO alarmes\b/i.test(sql)
+            ) {
+                interceptouInsercao = true;
+
+                // Solicita encerramento enquanto a transação
+                // ainda não executou o COMMIT.
+                promessaEncerramento = new Promise((resolve, reject) => {
+                    contexto.encerrar(
+                        'ESP32-TESTE',
+                        sessaoDuranteTransacao,
+                        erro => erro ? reject(erro) : resolve()
+                    );
+                });
+            }
+
+            return executarOriginal.call(this, sql, ...argumentos);
+        };
+
+        contexto.registrar({
+            pacienteId: 999,
+            dispositivo: 'ESP32-TESTE',
+            sessaoId: sessaoDuranteTransacao,
+            nivel: 'critico',
+            bpm: 130,
+            spo2: 98,
+            leituraId: 6001
+        });
+
+        await aguardarFila(contexto);
+
+        assert.ok(
+            interceptouInsercao,
+            'A inserção não foi interceptada.'
+        );
+
+        await promessaEncerramento;
+
+        const registro = await consultar(
+            'SELECT * FROM alarmes WHERE leitura_id = ?',
+            [6001]
+        );
+
+        assert.ok(registro);
+        assert.equal(registro.status, 'encerrado');
+        assert.ok(registro.encerramento);
+
+        console.log(
+            'OK - Encerramento durante transação foi processado'
+        );
+        console.log(
+            'OK - Alarme não permaneceu ativo após encerramento'
+        );
+    } finally {
+        db.run = executarOriginal;
+    }
+
     assert.deepEqual(erros, []);
-
-
-    // Teste: falha proposital ao encerrar uma sessão.
-    // Usa somente o banco SQLite temporário.
 
     await executar(`
         CREATE TRIGGER bloquear_encerramento_teste
