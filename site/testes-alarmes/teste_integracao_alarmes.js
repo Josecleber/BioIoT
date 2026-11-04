@@ -61,7 +61,24 @@ async function testar() {
         throw new Error('Funções de alarmes não encontradas.');
     }
 
-    const contexto = vm.createContext({ db, console });
+
+    const contexto = vm.createContext({
+        db,
+        dbAlarmes: db,
+        setImmediate,
+
+        sessoesEmMonitoramento: new Map([
+            ['ESP32-TESTE', 'SESSAO-A']
+        ]),
+
+        pacientesEmMonitoramento: new Map([
+            ['ESP32-TESTE', 999]
+        ]),
+
+        dispositivosEncerrandoMonitoramento: new Set(),
+
+        console
+    });
 
     vm.runInContext(
         servidor.slice(inicio, fim) + `
@@ -70,11 +87,38 @@ async function testar() {
             this.normalizar = encerrarAlarmesNormalizados;
             this.interromper = interromperAlarmesDaSessao;
             this.encerrar = encerrarAlarmesDaSessao;
+
+this.aguardarFila = function (callback) {
+    function verificar() {
+        if (
+            !substituicaoAlarmeEmAndamento &&
+            filaSubstituicaoAlarmes.length === 0
+        ) {
+            callback();
+            return;
+        }
+
+        setImmediate(verificar);
+    }
+
+    verificar();
+};
         `,
         contexto
     );
 
+    function aguardarFila() {
+        return new Promise(resolve => {
+            contexto.aguardarFila(resolve);
+        });
+    }
+
     async function criarAlarme(sessaoId, leituraId) {
+        contexto.sessoesEmMonitoramento.set(
+            'ESP32-TESTE',
+            sessaoId
+        );
+
         contexto.registrar({
             pacienteId: 999,
             dispositivo: 'ESP32-TESTE',
@@ -85,7 +129,8 @@ async function testar() {
             leituraId
         });
 
-        // Consulta após a solicitação de gravação.
+        await aguardarFila();
+
         return consultar(
             `SELECT * FROM alarmes
              WHERE leitura_id = ${leituraId}`
@@ -138,9 +183,15 @@ async function testar() {
     assert.equal(historico.total, 3);
     console.log('OK - Histórico preservou os três alertas');
 
+    contexto.sessoesEmMonitoramento.set(
+        'ESP32-TESTE',
+        'SESSAO-TRANSICAO'
+    );
 
-    // Teste: atenção confirmada seguida de crítico.
-    // Todos os dados são fictícios e ficam em memória.
+    contexto.pacientesEmMonitoramento.set(
+        'ESP32-TESTE',
+        999
+    );
 
     contexto.registrar({
         pacienteId: 999,
